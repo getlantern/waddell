@@ -27,6 +27,7 @@ func handle(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
 	for i := 0; i < 500; i++ {
 		fmt.Fprintf(w, "line%d\n", i)
 		w.(http.Flusher).Flush()
