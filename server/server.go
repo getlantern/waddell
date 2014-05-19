@@ -7,6 +7,8 @@ import (
 	"os"
 	"sync"
 	"time"
+
+	"github.com/getlantern/framed"
 )
 
 func main() {
@@ -27,8 +29,10 @@ func handle(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
+
+	writer := &framed.Writer{w}
 	for i := 0; i < 500; i++ {
-		fmt.Fprintf(w, "line%d\n", i)
+		writer.Write([]byte(fmt.Sprintf("frame %d", i)))
 		w.(http.Flusher).Flush()
 		time.Sleep(1 * time.Second)
 	}
