@@ -5,24 +5,23 @@ import (
 	"io"
 	"log"
 	"net/http"
-	//"net/url"
+	"net/url"
 	"os"
 )
 
 func main() {
-	client := http.Client{}s
-	http.NewRequest("GET", fmt.Sprintf("http://%s/", os.Args[1]), nil)
-	resp, err := client.Do(req)
+	client := http.Client{
+		Transport: &http.Transport{
+			Proxy: func(req *http.Request) (*url.URL, error) {
+				return url.Parse("http://localhost:10080")
+			},
+		},
+	}
+	resp, err := client.Get(fmt.Sprintf("http://%s/", os.Args[1]))
 	if err != nil {
 		log.Fatalf("Unable to open request: %s", err)
 	}
 	log.Println(resp.TransferEncoding)
 	defer resp.Body.Close()
-	go func() {
-		io.Copy(os.Stdout, resp.Body)
-		wg.Done()
-		}()
-	for {
-		re
-	}
+	io.Copy(os.Stdout, resp.Body)
 }
