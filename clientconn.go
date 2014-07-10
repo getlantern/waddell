@@ -7,11 +7,16 @@ import (
 	"github.com/getlantern/framed"
 )
 
+// Message is a message read from a waddell server
 type Message struct {
-	Peer PeerId
+	// From is the id of the peer who sent the message
+	From PeerId
+
+	// Body is the content of the message
 	Body []byte
 }
 
+// Client is a client of a waddell server
 type Client struct {
 	id     PeerId
 	conn   net.Conn
@@ -19,6 +24,7 @@ type Client struct {
 	writer *framed.Writer
 }
 
+// Connect connects to a waddell server
 func Connect(serverAddr string) (*Client, error) {
 	conn, err := net.Dial("tcp", serverAddr)
 	if err != nil {
@@ -30,15 +36,17 @@ func Connect(serverAddr string) (*Client, error) {
 		writer: framed.NewWriter(conn),
 	}
 	// Read first message to get our PeerId
-	msg, err := c.Read(make([]byte, PEER_ID_LENGTH))
+	msg, err := c.Receive(make([]byte, PEER_ID_LENGTH))
 	if err != nil {
 		return nil, fmt.Errorf("Unable to get peerid: %s", err)
 	}
-	c.id = msg.Peer
+	c.id = msg.From
 	return c, nil
 }
 
-func (c *Client) Read(b []byte) (*Message, error) {
+// Receive reads the next Message from waddell, using the given buffer to
+// receive the message.
+func (c *Client) Receive(b []byte) (*Message, error) {
 	n, err := c.reader.Read(b)
 	if err != nil {
 		return nil, err
@@ -48,12 +56,13 @@ func (c *Client) Read(b []byte) (*Message, error) {
 		return nil, err
 	}
 	return &Message{
-		Peer: peer,
+		From: peer,
 		Body: b[PEER_ID_LENGTH:n],
 	}, nil
 }
 
-func (c *Client) Write(to PeerId, body []byte) error {
+// Send sends the given body to the indiciated peer via waddell.
+func (c *Client) Send(to PeerId, body []byte) error {
 	_, err := c.writer.WritePieces(to.toBytes(), body)
 	return err
 }

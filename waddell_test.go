@@ -56,19 +56,19 @@ func TestPeers(t *testing.T) {
 		defer wg.Done()
 		readBuffer := make([]byte, 100)
 
-		err := peer2.Write(peer1.id, []byte(HELLO))
+		err := peer2.Send(peer1.id, []byte(HELLO))
 		if err != nil {
 			t.Fatalf("Unable to write hello: %s", err)
 		} else {
-			resp, err := peer2.Read(readBuffer)
+			resp, err := peer2.Receive(readBuffer)
 			if err != nil {
 				t.Fatalf("Unable to read response to hello: %s", err)
 			} else {
 				if string(resp.Body) != HELLO_YOURSELF {
 					t.Errorf("Response did not match expected.  Expected: %s, Got: %s", HELLO_YOURSELF, string(resp.Body))
 				}
-				if resp.Peer != peer1.id {
-					t.Errorf("Peer on response did not match expected.  Expected: %s, Got: %s", peer1.id, resp.Peer)
+				if resp.From != peer1.id {
+					t.Errorf("Peer on response did not match expected.  Expected: %s, Got: %s", peer1.id, resp.From)
 				}
 			}
 		}
@@ -79,17 +79,17 @@ func TestPeers(t *testing.T) {
 		defer wg.Done()
 		readBuffer := make([]byte, 100)
 
-		msg, err := peer1.Read(readBuffer)
+		msg, err := peer1.Receive(readBuffer)
 		if err != nil {
 			t.Fatalf("Unable to read hello message: %s", err)
 		}
 		if string(msg.Body) != HELLO {
 			t.Errorf("Hello message did not match expected.  Expected: %s, Got: %s", HELLO, string(msg.Body))
 		}
-		if msg.Peer != peer2.id {
-			t.Errorf("Peer on hello message did not match expected.  Expected: %s, Got: %s", peer2.id, msg.Peer)
+		if msg.From != peer2.id {
+			t.Errorf("Peer on hello message did not match expected.  Expected: %s, Got: %s", peer2.id, msg.From)
 		}
-		err = peer1.Write(peer2.id, []byte(HELLO_YOURSELF))
+		err = peer1.Send(peer2.id, []byte(HELLO_YOURSELF))
 		if err != nil {
 			t.Fatalf("Unable to write response to HELLO message: %s", err)
 		}

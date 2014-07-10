@@ -14,6 +14,7 @@ const (
 	DEFAULT_NUM_BUFFERS = 10000
 )
 
+// Server is a waddell server
 type Server struct {
 	// NumBuffers: number of buffers to cache for reading and writing (balances
 	// overall memory consumption against CPU usage).  Defaults to 10,000.
@@ -36,6 +37,7 @@ type peer struct {
 	writer *framed.Writer
 }
 
+// Listen starts the waddell server listening at the given address
 func (server *Server) Listen(addr string) error {
 	// Set default values
 	if server.NumBuffers == 0 {
@@ -114,11 +116,10 @@ func (peer *peer) readNext() bool {
 	defer peer.server.buffers.Put(b)
 	n, err := peer.reader.Read(b)
 	if err != nil {
-		log.Printf("Unable to read from sender: %s", err)
 		return false
 	}
 	msg := b[:n]
-	to, err := idFor(msg)
+	to, err := readPeerId(msg)
 	if err != nil {
 		// Problem determining recipient
 		log.Print(err.Error())
@@ -130,10 +131,12 @@ func (peer *peer) readNext() bool {
 		return true
 	}
 	// Set sender's id as the id in the message
-	swapId(msg, peer.id)
+	err = peer.id.write(msg)
+	if err != nil {
+		return true
+	}
 	_, err = cto.writer.Write(msg)
 	if err != nil {
-		log.Printf("Unable to write to recipient: %s", err)
 		cto.conn.Close()
 		return true
 	}
