@@ -45,7 +45,8 @@ import (
 )
 
 const (
-	PEER_ID_LENGTH = 16
+	PEER_ID_LENGTH   = 16
+	WADDELL_OVERHEAD = 18 // bytes of overhead imposed by waddell
 )
 
 var endianness = binary.LittleEndian

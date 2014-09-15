@@ -63,6 +63,12 @@ func (c *Client) Receive(b []byte) (*Message, error) {
 
 // Send sends the given body to the indiciated peer via waddell.
 func (c *Client) Send(to PeerId, body []byte) error {
-	_, err := c.writer.WritePieces(to.toBytes(), body)
+	return c.SendPieces(to, body)
+}
+
+// Send sends the given multi-piece body to the indiciated peer via waddell.
+func (c *Client) SendPieces(to PeerId, bodyPieces ...[]byte) error {
+	pieces := append([][]byte{to.toBytes()}, bodyPieces...)
+	_, err := c.writer.WritePieces(pieces...)
 	return err
 }
