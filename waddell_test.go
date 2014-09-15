@@ -33,7 +33,7 @@ func TestPeers(t *testing.T) {
 
 	go func() {
 		server := &Server{}
-		err := server.Listen(serverAddr)
+		err := server.ListenAndServe(serverAddr)
 		if err != nil {
 			t.Fatalf("Unable to start server: %s", err)
 		}

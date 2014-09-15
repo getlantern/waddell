@@ -37,8 +37,8 @@ type peer struct {
 	writer *framed.Writer
 }
 
-// Listen starts the waddell server listening at the given address
-func (server *Server) Listen(addr string) error {
+// ListenAndServe starts the waddell server listening at the given address
+func (server *Server) ListenAndServe(addr string) error {
 	// Set default values
 	if server.NumBuffers == 0 {
 		server.NumBuffers = DEFAULT_NUM_BUFFERS
