@@ -40,6 +40,10 @@ func Connect(conn net.Conn) (*Client, error) {
 	return c, nil
 }
 
+func (c *Client) ID() PeerId {
+	return c.id
+}
+
 // Receive reads the next Message from waddell, using the given buffer to
 // receive the message.
 func (c *Client) Receive(b []byte) (*Message, error) {
