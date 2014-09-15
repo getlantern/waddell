@@ -63,6 +63,12 @@ func PeerIdFromString(s string) (PeerId, error) {
 	return readPeerId(uuid.Parse(s))
 }
 
+func (id PeerId) String() string {
+	b := uuid.UUID(make([]byte, 16))
+	id.write([]byte(b))
+	return b.String()
+}
+
 func readPeerId(b []byte) (PeerId, error) {
 	if len(b) < PEER_ID_LENGTH {
 		return PeerId{}, fmt.Errorf("Insufficient data to read peer id, message may be truncated")
