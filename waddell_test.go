@@ -32,8 +32,13 @@ func TestPeers(t *testing.T) {
 	serverAddr := "localhost:15234"
 
 	go func() {
+		listener, err := net.Listen("tcp", serverAddr)
+		if err != nil {
+			t.Fatalf("Unable to listen at %s: %s", serverAddr, err)
+		}
+
 		server := &Server{}
-		err := server.ListenAndServe(serverAddr)
+		err = server.Serve(listener)
 		if err != nil {
 			t.Fatalf("Unable to start server: %s", err)
 		}
@@ -41,11 +46,20 @@ func TestPeers(t *testing.T) {
 
 	waitForServer(serverAddr, 250*time.Millisecond, t)
 
-	peer1, err := Connect(serverAddr)
+	conn1, err := net.Dial("tcp", serverAddr)
+	if err != nil {
+		t.Fatalf("Unable to dial server: %s", err)
+	}
+	peer1, err := Connect(conn1)
 	if err != nil {
 		t.Fatalf("Unable to connect peer1: %s", err)
 	}
-	peer2, err := Connect(serverAddr)
+
+	conn2, err := net.Dial("tcp", serverAddr)
+	if err != nil {
+		t.Fatalf("Unable to dial server: %s", err)
+	}
+	peer2, err := Connect(conn2)
 	if err != nil {
 		t.Fatalf("Unable to connect peer1: %s", err)
 	}

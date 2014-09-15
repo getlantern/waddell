@@ -38,7 +38,7 @@ type peer struct {
 }
 
 // ListenAndServe starts the waddell server listening at the given address
-func (server *Server) ListenAndServe(addr string) error {
+func (server *Server) Serve(listener net.Listener) error {
 	// Set default values
 	if server.NumBuffers == 0 {
 		server.NumBuffers = DEFAULT_NUM_BUFFERS
@@ -50,11 +50,6 @@ func (server *Server) ListenAndServe(addr string) error {
 	server.buffers = bpool.NewBytePool(server.NumBuffers, server.BufferBytes)
 	server.peers = make(map[PeerId]*peer)
 
-	// Listen for connections
-	listener, err := net.Listen("tcp", addr)
-	if err != nil {
-		return fmt.Errorf("Unable to listen at %s: %s", addr, err)
-	}
 	for {
 		conn, err := listener.Accept()
 		if err != nil {

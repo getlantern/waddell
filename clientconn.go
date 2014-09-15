@@ -25,11 +25,7 @@ type Client struct {
 }
 
 // Connect connects to a waddell server
-func Connect(serverAddr string) (*Client, error) {
-	conn, err := net.Dial("tcp", serverAddr)
-	if err != nil {
-		return nil, fmt.Errorf("Unable to dial server: %s", err)
-	}
+func Connect(conn net.Conn) (*Client, error) {
 	c := &Client{
 		conn:   conn,
 		reader: framed.NewReader(conn),

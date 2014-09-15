@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"log"
+	"net"
 
 	"github.com/getlantern/waddell"
 )
@@ -14,7 +15,11 @@ var (
 func main() {
 	server := &waddell.Server{}
 	log.Printf("Starting waddell at %s", *addr)
-	err := server.ListenAndServe(*addr)
+	listener, err := net.Listen("tcp", *addr)
+	if err != nil {
+		log.Fatalf("Unable to listen at %s: %s", *addr, err)
+	}
+	err = server.Serve(listener)
 	if err != nil {
 		log.Fatalf("Unable to start waddell at %s: %s", *addr, err)
 	}
