@@ -12,6 +12,8 @@ const (
 	HELLO_YOURSELF = "Hello Yourself!"
 )
 
+// TestPeerIdRoundTrip makes sure that we can write and read a PeerId to/from a
+// byte array.
 func TestPeerIdRoundTrip(t *testing.T) {
 	b := make([]byte, PEER_ID_LENGTH)
 	orig := randomPeerId()
