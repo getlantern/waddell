@@ -27,15 +27,13 @@
 //
 // Message structure on the wire (bits):
 //
-//   0-16    Frame Length - waddell uses github.com/getlantern/framed to frame
-//                          messages. framed uses the first 16 bits of the
-//                          message to indicate the length of the frame (Little
-//                          Endian).
-//
-//   16-144  Sender/Recipient Address - Two 64-bit integers encoded in Little
-//                                      Endian byte order.
-//
-//   144+    Message Body - whatever data the client sent
+//   0-15    Frame Length       - waddell uses github.com/getlantern/framed to
+//                               frame messages. framed uses the first 16 bits
+//                               of the message to indicate the length of the
+//                               frame (Little Endian).
+//   16-79   Sender Address     - 64-bit integer in Little Endian byte order
+//   80-143  Recipient Address  - 64-bit integer in Little Endian byte order
+//   144+    Message Body       - whatever data the client sent
 //
 package waddell
 
