@@ -22,7 +22,7 @@
 //
 //   waddell server -> peer 2 : send newly assigned peer id
 //
-//   (out of band) peer 1 lets peer 2 know about its id
+//   (out of band)            : peer 1 lets peer 2 know about its id
 //
 //   peer 2 -> waddell server : send message to peer 1
 //
