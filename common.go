@@ -15,13 +15,21 @@
 // Here is an example exchange between two peers:
 //
 //   peer 1 -> waddell server : connect
+//
 //   waddell server -> peer 1 : send newly assigned peer id
+//
 //   peer 2 -> waddell server : connect
+//
 //   waddell server -> peer 2 : send newly assigned peer id
+//
 //   (out of band) peer 1 lets peer 2 know about its id
+//
 //   peer 2 -> waddell server : send message to peer 1
+//
 //   waddell server -> peer 1 : deliver message from peer 2 (includes peer 2's id)
+//
 //   peer 1 -> waddell server : send message to peer 2
+//
 //   etc ..
 //
 //
