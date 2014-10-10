@@ -27,7 +27,7 @@
 //
 // Message structure on the wire (bits):
 //
-//   0-16	 Frame Length - waddell uses github.com/getlantern/framed to frame
+//   0-16    Frame Length - waddell uses github.com/getlantern/framed to frame
 //                          messages. framed uses the first 16 bits of the
 //                          message to indicate the length of the frame (Little
 //                          Endian).
