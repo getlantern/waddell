@@ -53,6 +53,7 @@ import (
 	"fmt"
 
 	"code.google.com/p/go-uuid/uuid"
+	"github.com/getlantern/golog"
 )
 
 const (
@@ -60,7 +61,11 @@ const (
 	WADDELL_OVERHEAD = 18 // bytes of overhead imposed by waddell
 )
 
-var endianness = binary.LittleEndian
+var (
+	log = golog.LoggerFor("waddell.client")
+
+	endianness = binary.LittleEndian
+)
 
 // PeerId is an identifier for a waddell peer, composed of two 64 bit integers
 // representing a type 4 UUID.

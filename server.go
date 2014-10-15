@@ -2,7 +2,6 @@ package waddell
 
 import (
 	"fmt"
-	"log"
 	"net"
 	"sync"
 
@@ -94,7 +93,7 @@ func (peer *peer) run() {
 	peer.id.write(msg)
 	_, err := peer.writer.Write(msg)
 	if err != nil {
-		log.Printf("Unable to send peerid on connect: %s", err)
+		log.Debugf("Unable to send peerid on connect: %s", err)
 		return
 	}
 
@@ -117,7 +116,7 @@ func (peer *peer) readNext() bool {
 	to, err := readPeerId(msg)
 	if err != nil {
 		// Problem determining recipient
-		log.Print(err.Error())
+		log.Errorf("Unable to determine recipient: ", err.Error())
 		return true
 	}
 	cto := peer.server.getPeer(to)

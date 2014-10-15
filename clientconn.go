@@ -47,7 +47,9 @@ func (c *Client) ID() PeerId {
 // Receive reads the next Message from waddell, using the given buffer to
 // receive the message.
 func (c *Client) Receive(b []byte) (*Message, error) {
+	log.Trace("Receiving")
 	n, err := c.reader.Read(b)
+	log.Tracef("Received %d: %s", n, err)
 	if err != nil {
 		return nil, err
 	}
