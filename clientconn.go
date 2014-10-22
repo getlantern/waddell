@@ -68,9 +68,16 @@ func (c *Client) Send(to PeerId, body []byte) error {
 	return c.SendPieces(to, body)
 }
 
-// Send sends the given multi-piece body to the indiciated peer via waddell.
+// SendPieces sends the given multi-piece body to the indiciated peer via
+// waddell.
 func (c *Client) SendPieces(to PeerId, bodyPieces ...[]byte) error {
 	pieces := append([][]byte{to.toBytes()}, bodyPieces...)
 	_, err := c.writer.WritePieces(pieces...)
 	return err
+}
+
+// SendKeepAlive sends a keep alive message to the server to keep the underlying
+// connection open.
+func (c *Client) SendKeepAlive() error {
+	return c.writer.Write(keepAlive)
 }

@@ -65,6 +65,8 @@ var (
 	log = golog.LoggerFor("waddell.client")
 
 	endianness = binary.LittleEndian
+
+	keepAlive = []byte{'k'}
 )
 
 // PeerId is an identifier for a waddell peer, composed of two 64 bit integers

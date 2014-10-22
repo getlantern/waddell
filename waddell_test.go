@@ -95,6 +95,10 @@ func TestPeers(t *testing.T) {
 		defer wg.Done()
 		readBuffer := make([]byte, 100)
 
+		err := peer1.SendKeepAlive()
+		if err != nil {
+			t.Fatalf("Unable to send KeepAlive: %s", err)
+		}
 		msg, err := peer1.Receive(readBuffer)
 		if err != nil {
 			t.Fatalf("Unable to read hello message: %s", err)

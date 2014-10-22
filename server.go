@@ -105,7 +105,7 @@ func (peer *peer) run() {
 	}
 }
 
-func (peer *peer) readNext() bool {
+func (peer *peer) readNext() (ok bool) {
 	b := peer.server.buffers.Get()
 	defer peer.server.buffers.Put(b)
 	n, err := peer.reader.Read(b)
@@ -113,6 +113,10 @@ func (peer *peer) readNext() bool {
 		return false
 	}
 	msg := b[:n]
+	if len(msg) == 1 && msg[0] == keepAlive[0] {
+		// Got a keepalive message, ignore it
+		return true
+	}
 	to, err := readPeerId(msg)
 	if err != nil {
 		// Problem determining recipient
