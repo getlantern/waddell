@@ -79,5 +79,6 @@ func (c *Client) SendPieces(to PeerId, bodyPieces ...[]byte) error {
 // SendKeepAlive sends a keep alive message to the server to keep the underlying
 // connection open.
 func (c *Client) SendKeepAlive() error {
-	return c.writer.Write(keepAlive)
+	_, err := c.writer.Write(keepAlive)
+	return err
 }
