@@ -1,6 +1,7 @@
 package waddell
 
 import (
+	"io/ioutil"
 	"net"
 	"sync"
 	"testing"
@@ -28,15 +29,35 @@ func TestPeerIdRoundTrip(t *testing.T) {
 	}
 }
 
-func TestPeers(t *testing.T) {
-	serverAddr := "localhost:15234"
+func TestPeersPlainText(t *testing.T) {
+	doTestPeers(t, false)
+}
+
+func TestPeersTLS(t *testing.T) {
+	doTestPeers(t, true)
+}
+
+func doTestPeers(t *testing.T, useTLS bool) {
+	pkfile := ""
+	certfile := ""
+	cert := ""
+
+	if useTLS {
+		pkfile = "waddell_test_pk.pem"
+		certfile = "waddell_test_cert.pem"
+		certBytes, err := ioutil.ReadFile(certfile)
+		if err != nil {
+			t.Fatalf("Unable to read cert from file: %s", err)
+		}
+		cert = string(certBytes)
+	}
+
+	listener, err := Listen("localhost:0", pkfile, certfile)
+	if err != nil {
+		t.Fatalf("Unable to listen: %s", err)
+	}
 
 	go func() {
-		listener, err := net.Listen("tcp", serverAddr)
-		if err != nil {
-			t.Fatalf("Unable to listen at %s: %s", serverAddr, err)
-		}
-
 		server := &Server{}
 		err = server.Serve(listener)
 		if err != nil {
@@ -44,25 +65,19 @@ func TestPeers(t *testing.T) {
 		}
 	}()
 
-	waitForServer(serverAddr, 250*time.Millisecond, t)
+	serverAddr := listener.Addr().String()
 
-	conn1, err := net.Dial("tcp", serverAddr)
-	if err != nil {
-		t.Fatalf("Unable to dial server: %s", err)
-	}
-	peer1, err := Connect(conn1)
+	conn1, peer1, err := Dial(serverAddr, cert)
 	if err != nil {
 		t.Fatalf("Unable to connect peer1: %s", err)
 	}
+	defer conn1.Close()
 
-	conn2, err := net.Dial("tcp", serverAddr)
-	if err != nil {
-		t.Fatalf("Unable to dial server: %s", err)
-	}
-	peer2, err := Connect(conn2)
+	conn2, peer2, err := Dial(serverAddr, cert)
 	if err != nil {
 		t.Fatalf("Unable to connect peer1: %s", err)
 	}
+	defer conn2.Close()
 
 	var wg sync.WaitGroup
 	wg.Add(2)

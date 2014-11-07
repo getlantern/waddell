@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"net"
 
 	"github.com/getlantern/golog"
 	"github.com/getlantern/waddell"
@@ -11,13 +10,20 @@ import (
 var (
 	log = golog.LoggerFor("waddell")
 
-	addr = flag.String("addr", ":62443", "host:port on which to listen for client connections")
+	addr     = flag.String("addr", ":62443", "host:port on which to listen for client connections")
+	pkfile   = flag.String("pkfile", "", "Location of private key file (optional)")
+	certfile = flag.String("certfile", "", "Location of certificate (optional)")
 )
 
 func main() {
+	flag.Parse()
 	server := &waddell.Server{}
-	log.Debugf("Starting waddell at %s", *addr)
-	listener, err := net.Listen("tcp", *addr)
+	if *pkfile != "" {
+		log.Debugf("Starting waddell with TLS over TCP at %s", *addr)
+	} else {
+		log.Debugf("Starting waddell with plain text TCP at %s", *addr)
+	}
+	listener, err := waddell.Listen(*addr, *pkfile, *certfile)
 	if err != nil {
 		log.Fatalf("Unable to listen at %s: %s", *addr, err)
 	}

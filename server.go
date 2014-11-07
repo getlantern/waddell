@@ -1,6 +1,7 @@
 package waddell
 
 import (
+	"crypto/tls"
 	"fmt"
 	"net"
 	"sync"
@@ -10,7 +11,24 @@ import (
 )
 
 const (
-	DEFAULT_NUM_BUFFERS = 10000
+	DefaultNumBuffers = 10000
+)
+
+var (
+	// The ECDHE cipher suites are preferred for performance and forward
+	// secrecy.  See https://community.qualys.com/blogs/securitylabs/2013/06/25/ssl-labs-deploying-forward-secrecy.
+	preferredCipherSuites = []uint16{
+		tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
+		tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
+		tls.TLS_ECDHE_RSA_WITH_RC4_128_SHA,
+		tls.TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA,
+		tls.TLS_RSA_WITH_RC4_128_SHA,
+		tls.TLS_RSA_WITH_3DES_EDE_CBC_SHA,
+		tls.TLS_RSA_WITH_AES_128_CBC_SHA,
+		tls.TLS_RSA_WITH_AES_256_CBC_SHA,
+		tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+		tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+	}
 )
 
 // Server is a waddell server
@@ -36,11 +54,37 @@ type peer struct {
 	writer *framed.Writer
 }
 
-// ListenAndServe starts the waddell server listening at the given address
+// Listen creates a listener at the given address. pkfile and certfile are
+// optional. If both are specified, connections will be secured with TLS.
+func Listen(addr string, pkfile string, certfile string) (net.Listener, error) {
+	if (pkfile != "" && certfile == "") || (pkfile == "" && certfile != "") {
+		return nil, fmt.Errorf("Please specify both pkfile and certfile")
+	}
+	if pkfile != "" {
+		return listenTLS(addr, pkfile, certfile)
+	} else {
+		return net.Listen("tcp", addr)
+	}
+}
+
+func listenTLS(addr string, pkfile string, certfile string) (net.Listener, error) {
+	cert, err := tls.LoadX509KeyPair(certfile, pkfile)
+	if err != nil {
+		return nil, fmt.Errorf("Unable to load cert and pk: %s", err)
+	}
+
+	return tls.Listen("tcp", addr, &tls.Config{
+		Certificates:             []tls.Certificate{cert},
+		PreferServerCipherSuites: true,
+		CipherSuites:             preferredCipherSuites,
+	})
+}
+
+// Serve starts the waddell server using the given listener
 func (server *Server) Serve(listener net.Listener) error {
 	// Set default values
 	if server.NumBuffers == 0 {
-		server.NumBuffers = DEFAULT_NUM_BUFFERS
+		server.NumBuffers = DefaultNumBuffers
 	}
 	if server.BufferBytes == 0 {
 		server.BufferBytes = framed.MAX_FRAME_SIZE

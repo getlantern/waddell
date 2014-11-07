@@ -1,10 +1,12 @@
 package waddell
 
 import (
+	"crypto/tls"
 	"fmt"
 	"net"
 
 	"github.com/getlantern/framed"
+	"github.com/getlantern/keyman"
 )
 
 // Message is a message read from a waddell server
@@ -38,6 +40,35 @@ func Connect(conn net.Conn) (*Client, error) {
 	}
 	c.id = msg.From
 	return c, nil
+}
+
+// Dial opens a Waddell client to the given addr. If cert is specified, the
+// connection will use TLS and authenticate the server using the given cert.
+// Cert is assumed to be PEM encoded.
+func Dial(addr string, cert string) (net.Conn, *Client, error) {
+	var conn net.Conn
+	var err error
+	if cert == "" {
+		conn, err = net.Dial("tcp", addr)
+	} else {
+		conn, err = dialTLS(addr, cert)
+	}
+	if err != nil {
+		return nil, nil, fmt.Errorf("Unable to dial server at addr %s: %s", addr, err)
+	}
+	client, err := Connect(conn)
+	return conn, client, err
+}
+
+func dialTLS(addr string, cert string) (net.Conn, error) {
+	c, err := keyman.LoadCertificateFromPEMBytes([]byte(cert))
+	if err != nil {
+		return nil, err
+	}
+	return tls.Dial("tcp", addr, &tls.Config{
+		RootCAs:    c.PoolContainingCert(),
+		ServerName: c.X509().Subject.CommonName,
+	})
 }
 
 func (c *Client) ID() PeerId {
