@@ -42,7 +42,7 @@ func TestPeersTLS(t *testing.T) {
 func doTestPeers(t *testing.T, useTLS bool) {
 	pkfile := ""
 	certfile := ""
-	cert := ""
+	connect := Connect
 
 	if useTLS {
 		pkfile = "waddell_test_pk.pem"
@@ -51,7 +51,10 @@ func doTestPeers(t *testing.T, useTLS bool) {
 		if err != nil {
 			t.Fatalf("Unable to read cert from file: %s", err)
 		}
-		cert = string(certBytes)
+		cert := string(certBytes)
+		connect = func(conn net.Conn) (*Client, error) {
+			return ConnectTLS(conn, cert)
+		}
 	}
 
 	listener, err := Listen("localhost:0", pkfile, certfile)
@@ -69,17 +72,17 @@ func doTestPeers(t *testing.T, useTLS bool) {
 
 	serverAddr := listener.Addr().String()
 
-	conn1, peer1, err := Dial(serverAddr, cert)
-	if err != nil {
-		t.Fatalf("Unable to connect peer1: %s", err)
-	}
+	conn1, err := net.Dial("tcp", serverAddr)
+	assert.NoError(t, err, "Unable to dial peer 1")
 	defer conn1.Close()
+	peer1, err := connect(conn1)
+	assert.NoError(t, err, "Unable to connect peer 1")
 
-	conn2, peer2, err := Dial(serverAddr, cert)
-	if err != nil {
-		t.Fatalf("Unable to connect peer1: %s", err)
-	}
+	conn2, err := net.Dial("tcp", serverAddr)
+	assert.NoError(t, err, "Unable to dial peer 2")
 	defer conn2.Close()
+	peer2, err := connect(conn2)
+	assert.NoError(t, err, "Unable to connect peer 2")
 
 	var wg sync.WaitGroup
 	wg.Add(2)
