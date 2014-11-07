@@ -75,6 +75,7 @@ func listenTLS(addr string, pkfile string, certfile string) (net.Listener, error
 	}
 
 	cfg := tlsdefaults.Server()
+	cfg.MinVersion = tls.VersionTLS12 // force newest available version of TLS
 	cfg.Certificates = []tls.Certificate{cert}
 	return tls.Listen("tcp", addr, cfg)
 }
