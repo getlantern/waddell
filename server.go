@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/getlantern/framed"
+	"github.com/getlantern/tlsdefaults"
 	"github.com/oxtoacart/bpool"
 )
 
@@ -73,11 +74,9 @@ func listenTLS(addr string, pkfile string, certfile string) (net.Listener, error
 		return nil, fmt.Errorf("Unable to load cert and pk: %s", err)
 	}
 
-	return tls.Listen("tcp", addr, &tls.Config{
-		Certificates:             []tls.Certificate{cert},
-		PreferServerCipherSuites: true,
-		CipherSuites:             preferredCipherSuites,
-	})
+	cfg := tlsdefaults.Server()
+	cfg.Certificates = []tls.Certificate{cert}
+	return tls.Listen("tcp", addr, cfg)
 }
 
 // Serve starts the waddell server using the given listener
