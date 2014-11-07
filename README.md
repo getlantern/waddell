@@ -2,7 +2,8 @@ waddell [![Travis CI Status](https://travis-ci.org/getlantern/waddell.svg?branch
 ==========
 waddell provides a simple signaling TCP-based signaling service.  It includes
 a server API for implementing a server, as well as a client API for talking to
-waddell servers.
+waddell servers. The server optionally supports running with TLS, using pk and
+cert files specified at the command-line.
 
 To install:
 
