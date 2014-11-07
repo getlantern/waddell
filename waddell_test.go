@@ -6,6 +6,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/getlantern/testify/assert"
 )
 
 const (
@@ -95,12 +97,8 @@ func doTestPeers(t *testing.T, useTLS bool) {
 			if err != nil {
 				t.Fatalf("Unable to read response to hello: %s", err)
 			} else {
-				if string(resp.Body) != HELLO_YOURSELF {
-					t.Errorf("Response did not match expected.  Expected: %s, Got: %s", HELLO_YOURSELF, string(resp.Body))
-				}
-				if resp.From != peer1.id {
-					t.Errorf("Peer on response did not match expected.  Expected: %s, Got: %s", peer1.id, resp.From)
-				}
+				assert.Equal(t, HELLO_YOURSELF, string(resp.Body), "Response should match expected.")
+				assert.Equal(t, peer1.ID(), resp.From, "Peer on response should match expected")
 			}
 		}
 	}()
@@ -118,12 +116,8 @@ func doTestPeers(t *testing.T, useTLS bool) {
 		if err != nil {
 			t.Fatalf("Unable to read hello message: %s", err)
 		}
-		if string(msg.Body) != HELLO {
-			t.Errorf("Hello message did not match expected.  Expected: %s, Got: %s", HELLO, string(msg.Body))
-		}
-		if msg.From != peer2.id {
-			t.Errorf("Peer on hello message did not match expected.  Expected: %s, Got: %s", peer2.id, msg.From)
-		}
+		assert.Equal(t, HELLO, string(msg.Body), "Hello message should match expected")
+		assert.Equal(t, peer2.ID(), msg.From, "Peer on hello message should match expected")
 		err = peer1.Send(peer2.id, []byte(HELLO_YOURSELF))
 		if err != nil {
 			t.Fatalf("Unable to write response to HELLO message: %s", err)
