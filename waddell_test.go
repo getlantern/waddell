@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	HELLO          = "Hello"
-	HELLO_YOURSELF = "Hello Yourself!"
+	Hello         = "Hello"
+	HelloYourself = "Hello Yourself!"
 )
 
 // TestPeerIdRoundTrip makes sure that we can write and read a PeerId to/from a
@@ -89,7 +89,7 @@ func doTestPeers(t *testing.T, useTLS bool) {
 		defer wg.Done()
 		readBuffer := make([]byte, 100)
 
-		err := peer2.Send(peer1.id, []byte(HELLO))
+		err := peer2.Send(peer1.id, []byte(Hello))
 		if err != nil {
 			t.Fatalf("Unable to write hello: %s", err)
 		} else {
@@ -97,7 +97,7 @@ func doTestPeers(t *testing.T, useTLS bool) {
 			if err != nil {
 				t.Fatalf("Unable to read response to hello: %s", err)
 			} else {
-				assert.Equal(t, HELLO_YOURSELF, string(resp.Body), "Response should match expected.")
+				assert.Equal(t, HelloYourself, string(resp.Body), "Response should match expected.")
 				assert.Equal(t, peer1.ID(), resp.From, "Peer on response should match expected")
 			}
 		}
@@ -116,9 +116,9 @@ func doTestPeers(t *testing.T, useTLS bool) {
 		if err != nil {
 			t.Fatalf("Unable to read hello message: %s", err)
 		}
-		assert.Equal(t, HELLO, string(msg.Body), "Hello message should match expected")
+		assert.Equal(t, Hello, string(msg.Body), "Hello message should match expected")
 		assert.Equal(t, peer2.ID(), msg.From, "Peer on hello message should match expected")
-		err = peer1.Send(peer2.id, []byte(HELLO_YOURSELF))
+		err = peer1.Send(peer2.id, []byte(HelloYourself))
 		if err != nil {
 			t.Fatalf("Unable to write response to HELLO message: %s", err)
 		}
