@@ -1,15 +1,18 @@
 package waddell
 
 import (
+	"io/ioutil"
 	"net"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/getlantern/testify/assert"
 )
 
 const (
-	HELLO          = "Hello"
-	HELLO_YOURSELF = "Hello Yourself!"
+	Hello         = "Hello"
+	HelloYourself = "Hello Yourself!"
 )
 
 // TestPeerIdRoundTrip makes sure that we can write and read a PeerId to/from a
@@ -28,15 +31,38 @@ func TestPeerIdRoundTrip(t *testing.T) {
 	}
 }
 
-func TestPeers(t *testing.T) {
-	serverAddr := "localhost:15234"
+func TestPeersPlainText(t *testing.T) {
+	doTestPeers(t, false)
+}
+
+func TestPeersTLS(t *testing.T) {
+	doTestPeers(t, true)
+}
+
+func doTestPeers(t *testing.T, useTLS bool) {
+	pkfile := ""
+	certfile := ""
+	connect := Connect
+
+	if useTLS {
+		pkfile = "waddell_test_pk.pem"
+		certfile = "waddell_test_cert.pem"
+		certBytes, err := ioutil.ReadFile(certfile)
+		if err != nil {
+			t.Fatalf("Unable to read cert from file: %s", err)
+		}
+		cert := string(certBytes)
+		connect = func(conn net.Conn) (*Client, error) {
+			return ConnectTLS(conn, cert)
+		}
+	}
+
+	listener, err := Listen("localhost:0", pkfile, certfile)
+	if err != nil {
+		t.Fatalf("Unable to listen: %s", err)
+	}
 
 	go func() {
-		listener, err := net.Listen("tcp", serverAddr)
-		if err != nil {
-			t.Fatalf("Unable to listen at %s: %s", serverAddr, err)
-		}
-
 		server := &Server{}
 		err = server.Serve(listener)
 		if err != nil {
@@ -44,25 +70,19 @@ func TestPeers(t *testing.T) {
 		}
 	}()
 
-	waitForServer(serverAddr, 250*time.Millisecond, t)
+	serverAddr := listener.Addr().String()
 
 	conn1, err := net.Dial("tcp", serverAddr)
-	if err != nil {
-		t.Fatalf("Unable to dial server: %s", err)
-	}
-	peer1, err := Connect(conn1)
-	if err != nil {
-		t.Fatalf("Unable to connect peer1: %s", err)
-	}
+	assert.NoError(t, err, "Unable to dial peer 1")
+	defer conn1.Close()
+	peer1, err := connect(conn1)
+	assert.NoError(t, err, "Unable to connect peer 1")
 
 	conn2, err := net.Dial("tcp", serverAddr)
-	if err != nil {
-		t.Fatalf("Unable to dial server: %s", err)
-	}
-	peer2, err := Connect(conn2)
-	if err != nil {
-		t.Fatalf("Unable to connect peer1: %s", err)
-	}
+	assert.NoError(t, err, "Unable to dial peer 2")
+	defer conn2.Close()
+	peer2, err := connect(conn2)
+	assert.NoError(t, err, "Unable to connect peer 2")
 
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -72,7 +92,7 @@ func TestPeers(t *testing.T) {
 		defer wg.Done()
 		readBuffer := make([]byte, 100)
 
-		err := peer2.Send(peer1.id, []byte(HELLO))
+		err := peer2.Send(peer1.id, []byte(Hello))
 		if err != nil {
 			t.Fatalf("Unable to write hello: %s", err)
 		} else {
@@ -80,12 +100,8 @@ func TestPeers(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Unable to read response to hello: %s", err)
 			} else {
-				if string(resp.Body) != HELLO_YOURSELF {
-					t.Errorf("Response did not match expected.  Expected: %s, Got: %s", HELLO_YOURSELF, string(resp.Body))
-				}
-				if resp.From != peer1.id {
-					t.Errorf("Peer on response did not match expected.  Expected: %s, Got: %s", peer1.id, resp.From)
-				}
+				assert.Equal(t, HelloYourself, string(resp.Body), "Response should match expected.")
+				assert.Equal(t, peer1.ID(), resp.From, "Peer on response should match expected")
 			}
 		}
 	}()
@@ -103,13 +119,9 @@ func TestPeers(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Unable to read hello message: %s", err)
 		}
-		if string(msg.Body) != HELLO {
-			t.Errorf("Hello message did not match expected.  Expected: %s, Got: %s", HELLO, string(msg.Body))
-		}
-		if msg.From != peer2.id {
-			t.Errorf("Peer on hello message did not match expected.  Expected: %s, Got: %s", peer2.id, msg.From)
-		}
-		err = peer1.Send(peer2.id, []byte(HELLO_YOURSELF))
+		assert.Equal(t, Hello, string(msg.Body), "Hello message should match expected")
+		assert.Equal(t, peer2.ID(), msg.From, "Peer on hello message should match expected")
+		err = peer1.Send(peer2.id, []byte(HelloYourself))
 		if err != nil {
 			t.Fatalf("Unable to write response to HELLO message: %s", err)
 		}

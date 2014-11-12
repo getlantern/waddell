@@ -1,16 +1,18 @@
 package waddell
 
 import (
+	"crypto/tls"
 	"fmt"
 	"net"
 	"sync"
 
 	"github.com/getlantern/framed"
+	"github.com/getlantern/tlsdefaults"
 	"github.com/oxtoacart/bpool"
 )
 
 const (
-	DEFAULT_NUM_BUFFERS = 10000
+	DefaultNumBuffers = 10000
 )
 
 // Server is a waddell server
@@ -36,11 +38,36 @@ type peer struct {
 	writer *framed.Writer
 }
 
-// ListenAndServe starts the waddell server listening at the given address
+// Listen creates a listener at the given address. pkfile and certfile are
+// optional. If both are specified, connections will be secured with TLS.
+func Listen(addr string, pkfile string, certfile string) (net.Listener, error) {
+	if (pkfile != "" && certfile == "") || (pkfile == "" && certfile != "") {
+		return nil, fmt.Errorf("Please specify both pkfile and certfile")
+	}
+	if pkfile != "" {
+		return listenTLS(addr, pkfile, certfile)
+	} else {
+		return net.Listen("tcp", addr)
+	}
+}
+
+func listenTLS(addr string, pkfile string, certfile string) (net.Listener, error) {
+	cert, err := tls.LoadX509KeyPair(certfile, pkfile)
+	if err != nil {
+		return nil, fmt.Errorf("Unable to load cert and pk: %s", err)
+	}
+
+	cfg := tlsdefaults.Server()
+	cfg.MinVersion = tls.VersionTLS12 // force newest available version of TLS
+	cfg.Certificates = []tls.Certificate{cert}
+	return tls.Listen("tcp", addr, cfg)
+}
+
+// Serve starts the waddell server using the given listener
 func (server *Server) Serve(listener net.Listener) error {
 	// Set default values
 	if server.NumBuffers == 0 {
-		server.NumBuffers = DEFAULT_NUM_BUFFERS
+		server.NumBuffers = DefaultNumBuffers
 	}
 	if server.BufferBytes == 0 {
 		server.BufferBytes = framed.MAX_FRAME_SIZE

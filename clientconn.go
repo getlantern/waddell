@@ -1,10 +1,12 @@
 package waddell
 
 import (
+	"crypto/tls"
 	"fmt"
 	"net"
 
 	"github.com/getlantern/framed"
+	"github.com/getlantern/keyman"
 )
 
 // Message is a message read from a waddell server
@@ -38,6 +40,19 @@ func Connect(conn net.Conn) (*Client, error) {
 	}
 	c.id = msg.From
 	return c, nil
+}
+
+// ConnectTLS is like connect, but it first wraps the given conn with TLS using
+// the supplied cert to authenticate the server (assumed to be PEM encoded).
+func ConnectTLS(conn net.Conn, cert string) (*Client, error) {
+	c, err := keyman.LoadCertificateFromPEMBytes([]byte(cert))
+	if err != nil {
+		return nil, err
+	}
+	return Connect(tls.Client(conn, &tls.Config{
+		RootCAs:    c.PoolContainingCert(),
+		ServerName: c.X509().Subject.CommonName,
+	}))
 }
 
 func (c *Client) ID() PeerId {
