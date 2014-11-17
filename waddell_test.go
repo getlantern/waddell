@@ -1,7 +1,9 @@
 package waddell
 
 import (
+	"fmt"
 	"io/ioutil"
+	"math/rand"
 	"net"
 	"sync"
 	"testing"
@@ -12,7 +14,9 @@ import (
 
 const (
 	Hello         = "Hello"
-	HelloYourself = "Hello Yourself!"
+	HelloYourself = "Hello %s!"
+
+	NumPeers = 100
 )
 
 // TestPeerIdRoundTrip makes sure that we can write and read a PeerId to/from a
@@ -72,60 +76,108 @@ func doTestPeers(t *testing.T, useTLS bool) {
 
 	serverAddr := listener.Addr().String()
 
-	conn1, err := net.Dial("tcp", serverAddr)
-	assert.NoError(t, err, "Unable to dial peer 1")
-	defer conn1.Close()
-	peer1, err := connect(conn1)
-	assert.NoError(t, err, "Unable to connect peer 1")
+	connsCh := make(chan net.Conn, NumPeers)
+	peersCh := make(chan *Client, NumPeers)
+	// Connect clients
+	for i := 0; i < NumPeers; i++ {
+		go func() {
+			conn, err := net.Dial("tcp", serverAddr)
+			if err != nil {
+				log.Fatalf("Unable to dial: %s", err)
+			}
+			assert.NoError(t, err, "Unable to dial")
+			connsCh <- conn
+			peer, err := connect(conn)
+			if err != nil {
+				log.Fatalf("Unable to connect peer: %s", err)
+			}
+			assert.NoError(t, err, "Unable to connect peer")
+			peersCh <- peer
+		}()
+	}
 
-	conn2, err := net.Dial("tcp", serverAddr)
-	assert.NoError(t, err, "Unable to dial peer 2")
-	defer conn2.Close()
-	peer2, err := connect(conn2)
-	assert.NoError(t, err, "Unable to connect peer 2")
+	defer func() {
+		for i := 0; i < NumPeers; i++ {
+			(<-connsCh).Close()
+		}
+	}()
+
+	peers := make([]*Client, 0, NumPeers)
+	for i := 0; i < NumPeers; i++ {
+		peers = append(peers, <-peersCh)
+	}
 
 	var wg sync.WaitGroup
-	wg.Add(2)
+	wg.Add(NumPeers)
 
-	go func() {
-		// Simulate peer 2
-		defer wg.Done()
-		readBuffer := make([]byte, 100)
+	// Send some large data to a peer that doesn't read, just to make sure we
+	// handle blocked readers okay
+	conn, err := net.Dial("tcp", serverAddr)
+	if err != nil {
+		log.Fatalf("Unable to connect bad conn: %s", err)
+	}
+	badPeer, err := connect(conn)
+	if err != nil {
+		log.Fatalf("Unable to connect bad peer: %s", err)
+	}
+	ld := largeData()
+	for i := 0; i < 10; i++ {
+		badPeer.Send(badPeer.ID(), ld)
+	}
 
-		err := peer2.Send(peer1.id, []byte(Hello))
-		if err != nil {
-			t.Fatalf("Unable to write hello: %s", err)
+	// Simulate readers and writers
+	for i := 0; i < NumPeers; i++ {
+		peer := peers[i]
+		isWriter := i%2 == 1
+
+		if isWriter {
+			go func() {
+				// Simulate writer
+				defer wg.Done()
+				readBuffer := make([]byte, 100)
+
+				// Write to each reader
+				for j := 0; j < NumPeers; j += 2 {
+					recip := peers[j]
+					err := peer.Send(recip.id, []byte(Hello))
+					if err != nil {
+						log.Fatalf("Unable to write hello: %s", err)
+					} else {
+						resp, err := peer.Receive(readBuffer)
+						if err != nil {
+							log.Fatalf("Unable to read response to hello: %s", err)
+						} else {
+							assert.Equal(t, fmt.Sprintf(HelloYourself, peer.ID()), string(resp.Body), "Response should match expected.")
+							assert.Equal(t, recip.ID(), resp.From, "Peer on response should match expected")
+						}
+					}
+				}
+			}()
 		} else {
-			resp, err := peer2.Receive(readBuffer)
-			if err != nil {
-				t.Fatalf("Unable to read response to hello: %s", err)
-			} else {
-				assert.Equal(t, HelloYourself, string(resp.Body), "Response should match expected.")
-				assert.Equal(t, peer1.ID(), resp.From, "Peer on response should match expected")
-			}
-		}
-	}()
+			go func() {
+				// Simulate reader
+				defer wg.Done()
+				readBuffer := make([]byte, 100)
 
-	go func() {
-		// Simulate peer 1
-		defer wg.Done()
-		readBuffer := make([]byte, 100)
-
-		err := peer1.SendKeepAlive()
-		if err != nil {
-			t.Fatalf("Unable to send KeepAlive: %s", err)
+				// Read from all readers
+				for j := 1; j < NumPeers; j += 2 {
+					err := peer.SendKeepAlive()
+					if err != nil {
+						log.Fatalf("Unable to send KeepAlive: %s", err)
+					}
+					msg, err := peer.Receive(readBuffer)
+					if err != nil {
+						log.Fatalf("Unable to read hello message: %s", err)
+					}
+					assert.Equal(t, Hello, string(msg.Body), "Hello message should match expected")
+					err = peer.Send(msg.From, []byte(fmt.Sprintf(HelloYourself, msg.From)))
+					if err != nil {
+						log.Fatalf("Unable to write response to HELLO message: %s", err)
+					}
+				}
+			}()
 		}
-		msg, err := peer1.Receive(readBuffer)
-		if err != nil {
-			t.Fatalf("Unable to read hello message: %s", err)
-		}
-		assert.Equal(t, Hello, string(msg.Body), "Hello message should match expected")
-		assert.Equal(t, peer2.ID(), msg.From, "Peer on hello message should match expected")
-		err = peer1.Send(peer2.id, []byte(HelloYourself))
-		if err != nil {
-			t.Fatalf("Unable to write response to HELLO message: %s", err)
-		}
-	}()
+	}
 
 	wg.Wait()
 }
@@ -147,4 +199,12 @@ func waitForServer(addr string, limit time.Duration, t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+}
+
+func largeData() []byte {
+	b := make([]byte, 60000)
+	for i := 0; i < len(b); i++ {
+		b[i] = byte(rand.Int())
+	}
+	return b
 }
