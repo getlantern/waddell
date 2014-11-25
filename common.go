@@ -53,74 +53,44 @@
 package waddell
 
 import (
-	"encoding/binary"
-	"fmt"
-
-	"code.google.com/p/go-uuid/uuid"
+	"github.com/getlantern/buuid"
 	"github.com/getlantern/golog"
 )
 
 const (
-	PEER_ID_LENGTH   = 16
+	PEER_ID_LENGTH   = buuid.EncodedLength
 	WADDELL_OVERHEAD = 18 // bytes of overhead imposed by waddell
 )
 
 var (
 	log = golog.LoggerFor("waddell.client")
 
-	endianness = binary.LittleEndian
-
 	keepAlive = []byte{'k'}
 )
 
-// PeerId is an identifier for a waddell peer, composed of two 64 bit integers
-// representing a type 4 UUID.
-type PeerId struct {
-	part1 uint64
-	part2 uint64
-}
+// PeerId is an identifier for a waddell peer
+type PeerId buuid.ID
 
 // PeerIdFromString constructs a PeerId from the string-encoded version of a
 // uuid.UUID.
 func PeerIdFromString(s string) (PeerId, error) {
-	return readPeerId(uuid.Parse(s))
-}
-
-func (id PeerId) String() string {
-	b := uuid.UUID(make([]byte, 16))
-	id.write([]byte(b))
-	return b.String()
+	id, err := buuid.FromString(s)
+	return PeerId(id), err
 }
 
 func readPeerId(b []byte) (PeerId, error) {
-	if len(b) < PEER_ID_LENGTH {
-		return PeerId{}, fmt.Errorf("Insufficient data to read peer id, message may be truncated")
-	}
-	return PeerId{
-		endianness.Uint64(b[0:8]),
-		endianness.Uint64(b[8:]),
-	}, nil
+	id, err := buuid.Read(b)
+	return PeerId(id), err
 }
 
 func randomPeerId() PeerId {
-	id, err := readPeerId(uuid.NewRandom())
-	if err != nil {
-		panic(fmt.Sprintf("Unable to generate random peer id: %s", err))
-	}
-	return id
+	return PeerId(buuid.Random())
 }
 
 func (id PeerId) write(b []byte) error {
-	if len(b) < PEER_ID_LENGTH {
-		return fmt.Errorf("Insufficient room to write peer id")
-	}
-	endianness.PutUint64(b, id.part1)
-	endianness.PutUint64(b[8:], id.part2)
-	return nil
+	return buuid.ID(id).Write(b)
 }
 
 func (id PeerId) toBytes() []byte {
-	b := make([]byte, PEER_ID_LENGTH)
-	id.write(b)
-	return b
+	return buuid.ID(id).ToBytes()
 }
