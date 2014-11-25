@@ -78,6 +78,10 @@ func PeerIdFromString(s string) (PeerId, error) {
 	return PeerId(id), err
 }
 
+func (id PeerId) String() string {
+	return buuid.ID(id).String()
+}
+
 func readPeerId(b []byte) (PeerId, error) {
 	id, err := buuid.Read(b)
 	return PeerId(id), err
