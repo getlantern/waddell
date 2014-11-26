@@ -44,6 +44,34 @@ func TestPeersTLS(t *testing.T) {
 	doTestPeers(t, true)
 }
 
+func TestBadDialerWithNoReconnect(t *testing.T) {
+	client := &Client{
+		ReconnectAttempts: 0,
+		Dial: func() (net.Conn, error) {
+			return nil, fmt.Errorf("I won't dial, no way!")
+		},
+	}
+	defer client.Close()
+	err := client.Connect()
+	assert.Error(t, err, "Connecting with no reconnect attempts should have failed")
+}
+
+func TestBadDialerWithMultipleReconnect(t *testing.T) {
+	client := &Client{
+		ReconnectAttempts: 2,
+		Dial: func() (net.Conn, error) {
+			return nil, fmt.Errorf("I won't dial, no way!")
+		},
+	}
+	defer client.Close()
+	start := time.Now()
+	err := client.Connect()
+	delta := time.Now().Sub(start)
+	assert.Error(t, err, "Connecting with no reconnect attempts should have failed")
+	expectedDelta := reconnectDelayInterval * 3
+	assert.True(t, delta >= expectedDelta, fmt.Sprintf("Redialing didn't wait long enough. Should have waited %s, only waited %s", expectedDelta, delta))
+}
+
 func doTestPeers(t *testing.T, useTLS bool) {
 	pkfile := ""
 	certfile := ""
@@ -193,25 +221,6 @@ func doTestPeers(t *testing.T, useTLS bool) {
 	}
 
 	wg.Wait()
-}
-
-// waitForServer waits for a TCP server to start at the given address, waiting
-// up to the given limit and reporting an error to the given testing.T if the
-// server didn't start within the time limit.
-func waitForServer(addr string, limit time.Duration, t *testing.T) {
-	cutoff := time.Now().Add(limit)
-	for {
-		if time.Now().After(cutoff) {
-			t.Errorf("Server never came up at address %s", addr)
-			return
-		}
-		c, err := net.DialTimeout("tcp", addr, limit)
-		if err == nil {
-			c.Close()
-			return
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
 }
 
 func largeData() []byte {
