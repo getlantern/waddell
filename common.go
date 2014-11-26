@@ -54,12 +54,14 @@ package waddell
 
 import (
 	"github.com/getlantern/buuid"
+	"github.com/getlantern/framed"
 	"github.com/getlantern/golog"
 )
 
 const (
-	PEER_ID_LENGTH   = buuid.EncodedLength
-	WADDELL_OVERHEAD = 18 // bytes of overhead imposed by waddell
+	PeerIdLength    = buuid.EncodedLength
+	WaddellOverhead = 18 // bytes of overhead imposed by waddell
+	MaxDataLength   = framed.MaxFrameSize - WaddellOverhead
 )
 
 var (

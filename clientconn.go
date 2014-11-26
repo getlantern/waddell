@@ -34,7 +34,7 @@ func Connect(conn net.Conn) (*Client, error) {
 		writer: framed.NewWriter(conn),
 	}
 	// Read first message to get our PeerId
-	msg, err := c.Receive(make([]byte, PEER_ID_LENGTH))
+	msg, err := c.Receive()
 	if err != nil {
 		return nil, fmt.Errorf("Unable to get peerid: %s", err)
 	}
@@ -59,22 +59,21 @@ func (c *Client) ID() PeerId {
 	return c.id
 }
 
-// Receive reads the next Message from waddell, using the given buffer to
-// receive the message.
-func (c *Client) Receive(b []byte) (*Message, error) {
+// Receive reads the next Message from waddell.
+func (c *Client) Receive() (*Message, error) {
 	log.Trace("Receiving")
-	n, err := c.reader.Read(b)
-	log.Tracef("Received %d: %s", n, err)
+	frame, err := c.reader.ReadFrame()
+	log.Tracef("Received %d: %s", len(frame), err)
 	if err != nil {
 		return nil, err
 	}
-	peer, err := readPeerId(b)
+	peer, err := readPeerId(frame)
 	if err != nil {
 		return nil, err
 	}
 	return &Message{
 		From: peer,
-		Body: b[PEER_ID_LENGTH:n],
+		Body: frame[PeerIdLength:],
 	}, nil
 }
 

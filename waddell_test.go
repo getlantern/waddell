@@ -22,7 +22,7 @@ const (
 // TestPeerIdRoundTrip makes sure that we can write and read a PeerId to/from a
 // byte array.
 func TestPeerIdRoundTrip(t *testing.T) {
-	b := make([]byte, PEER_ID_LENGTH)
+	b := make([]byte, PeerIdLength)
 	orig := randomPeerId()
 	orig.write(b)
 	read, err := readPeerId(b)
@@ -134,7 +134,6 @@ func doTestPeers(t *testing.T, useTLS bool) {
 			go func() {
 				// Simulate writer
 				defer wg.Done()
-				readBuffer := make([]byte, 100)
 
 				// Write to each reader
 				for j := 0; j < NumPeers; j += 2 {
@@ -143,7 +142,7 @@ func doTestPeers(t *testing.T, useTLS bool) {
 					if err != nil {
 						log.Fatalf("Unable to write hello: %s", err)
 					} else {
-						resp, err := peer.Receive(readBuffer)
+						resp, err := peer.Receive()
 						if err != nil {
 							log.Fatalf("Unable to read response to hello: %s", err)
 						} else {
@@ -157,7 +156,6 @@ func doTestPeers(t *testing.T, useTLS bool) {
 			go func() {
 				// Simulate reader
 				defer wg.Done()
-				readBuffer := make([]byte, 100)
 
 				// Read from all readers
 				for j := 1; j < NumPeers; j += 2 {
@@ -165,7 +163,7 @@ func doTestPeers(t *testing.T, useTLS bool) {
 					if err != nil {
 						log.Fatalf("Unable to send KeepAlive: %s", err)
 					}
-					msg, err := peer.Receive(readBuffer)
+					msg, err := peer.Receive()
 					if err != nil {
 						log.Fatalf("Unable to read hello message: %s", err)
 					}

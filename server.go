@@ -70,7 +70,7 @@ func (server *Server) Serve(listener net.Listener) error {
 		server.NumBuffers = DefaultNumBuffers
 	}
 	if server.BufferBytes == 0 {
-		server.BufferBytes = framed.MAX_FRAME_SIZE
+		server.BufferBytes = framed.MaxFrameSize
 	}
 
 	server.buffers = bpool.NewBytePool(server.NumBuffers, server.BufferBytes)
@@ -116,7 +116,7 @@ func (peer *peer) run() {
 	defer peer.server.removePeer(peer.id)
 
 	// Tell the peer its id
-	msg := peer.server.buffers.Get()[:PEER_ID_LENGTH]
+	msg := peer.server.buffers.Get()[:PeerIdLength]
 	peer.id.write(msg)
 	_, err := peer.writer.Write(msg)
 	if err != nil {
