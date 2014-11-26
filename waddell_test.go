@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"net"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -66,7 +67,11 @@ func doTestPeers(t *testing.T, useTLS bool) {
 
 	serverAddr := listener.Addr().String()
 
+	succeedOnDial := int32(0)
 	dial := func() (net.Conn, error) {
+		if atomic.CompareAndSwapInt32(&succeedOnDial, 0, 1) {
+			return nil, fmt.Errorf("Deliberately failing the first time around")
+		}
 		return net.Dial("tcp", serverAddr)
 	}
 	if useTLS {
@@ -83,7 +88,7 @@ func doTestPeers(t *testing.T, useTLS bool) {
 	connect := func() *Client {
 		client := &Client{
 			Dial:              dial,
-			ReconnectAttempts: 0,
+			ReconnectAttempts: 100,
 		}
 		err := client.Connect()
 		if err != nil {

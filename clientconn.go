@@ -12,8 +12,8 @@ import (
 )
 
 var (
-	maxReconnectDelay = 5 * time.Second
-	reconnectBackoff  = 100 * time.Millisecond
+	maxReconnectDelay      = 5 * time.Second
+	reconnectDelayInterval = 100 * time.Millisecond
 )
 
 // Message is a message read from a waddell server
@@ -203,6 +203,12 @@ func (c *Client) connect() *connInfo {
 				err: fmt.Errorf("Unable to connect: %s", lastErr),
 			}
 		}
+		delay := time.Duration(consecutiveFailures) * reconnectDelayInterval
+		if delay > maxReconnectDelay {
+			delay = maxReconnectDelay
+		}
+		log.Tracef("Waiting %s before dialing", delay)
+		time.Sleep(delay)
 		info, err := c.connectOnce()
 		if err == nil {
 			return info
