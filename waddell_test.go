@@ -46,83 +46,85 @@ func TestPeersTLS(t *testing.T) {
 func doTestPeers(t *testing.T, useTLS bool) {
 	pkfile := ""
 	certfile := ""
-	connect := Connect
-
 	if useTLS {
 		pkfile = "waddell_test_pk.pem"
 		certfile = "waddell_test_cert.pem"
-		certBytes, err := ioutil.ReadFile(certfile)
-		if err != nil {
-			t.Fatalf("Unable to read cert from file: %s", err)
-		}
-		cert := string(certBytes)
-		connect = func(conn net.Conn) (*Client, error) {
-			return ConnectTLS(conn, cert)
-		}
 	}
 
 	listener, err := Listen("localhost:0", pkfile, certfile)
 	if err != nil {
-		t.Fatalf("Unable to listen: %s", err)
+		log.Fatalf("Unable to listen: %s", err)
 	}
 
 	go func() {
 		server := &Server{}
 		err = server.Serve(listener)
 		if err != nil {
-			t.Fatalf("Unable to start server: %s", err)
+			log.Fatalf("Unable to start server: %s", err)
 		}
 	}()
 
 	serverAddr := listener.Addr().String()
 
-	connsCh := make(chan net.Conn, NumPeers)
+	dial := func() (net.Conn, error) {
+		return net.Dial("tcp", serverAddr)
+	}
+	if useTLS {
+		certBytes, err := ioutil.ReadFile(certfile)
+		if err != nil {
+			log.Fatalf("Unable to read cert from file: %s", err)
+		}
+		cert := string(certBytes)
+		dial, err = Secured(dial, cert)
+		if err != nil {
+			log.Fatalf("Unable to secure dial function: %s", err)
+		}
+	}
+	connect := func() *Client {
+		client := &Client{
+			Dial:              dial,
+			ReconnectAttempts: 0,
+		}
+		err := client.Connect()
+		if err != nil {
+			log.Fatalf("Unable to connect client: %s", err)
+		}
+		return client
+	}
+
 	peersCh := make(chan *Client, NumPeers)
 	// Connect clients
 	for i := 0; i < NumPeers; i++ {
 		go func() {
-			conn, err := net.Dial("tcp", serverAddr)
-			if err != nil {
-				log.Fatalf("Unable to dial: %s", err)
-			}
-			assert.NoError(t, err, "Unable to dial")
-			connsCh <- conn
-			peer, err := connect(conn)
-			if err != nil {
-				log.Fatalf("Unable to connect peer: %s", err)
-			}
+			peer := connect()
 			assert.NoError(t, err, "Unable to connect peer")
 			peersCh <- peer
 		}()
 	}
 
-	defer func() {
-		for i := 0; i < NumPeers; i++ {
-			(<-connsCh).Close()
-		}
-	}()
-
 	peers := make([]*Client, 0, NumPeers)
 	for i := 0; i < NumPeers; i++ {
 		peers = append(peers, <-peersCh)
 	}
+	defer func() {
+		for _, peer := range peers {
+			peer.Close()
+		}
+	}()
 
 	var wg sync.WaitGroup
 	wg.Add(NumPeers)
 
 	// Send some large data to a peer that doesn't read, just to make sure we
 	// handle blocked readers okay
-	conn, err := net.Dial("tcp", serverAddr)
-	if err != nil {
-		log.Fatalf("Unable to connect bad conn: %s", err)
-	}
-	badPeer, err := connect(conn)
-	if err != nil {
-		log.Fatalf("Unable to connect bad peer: %s", err)
-	}
+	badPeer := connect()
 	ld := largeData()
 	for i := 0; i < 10; i++ {
-		badPeer.Send(badPeer.ID(), ld)
+		id, err := badPeer.ID()
+		if err != nil {
+			log.Fatalf("Unable to get peer id: %s", err)
+		}
+		badPeer.Send(id, ld)
 	}
 
 	// Simulate readers and writers
@@ -138,7 +140,11 @@ func doTestPeers(t *testing.T, useTLS bool) {
 				// Write to each reader
 				for j := 0; j < NumPeers; j += 2 {
 					recip := peers[j]
-					err := peer.Send(recip.id, []byte(Hello))
+					recipId, err := recip.ID()
+					if err != nil {
+						log.Fatalf("Unable to get recip id: %s", err)
+					}
+					err = peer.Send(recipId, []byte(Hello))
 					if err != nil {
 						log.Fatalf("Unable to write hello: %s", err)
 					} else {
@@ -146,8 +152,12 @@ func doTestPeers(t *testing.T, useTLS bool) {
 						if err != nil {
 							log.Fatalf("Unable to read response to hello: %s", err)
 						} else {
-							assert.Equal(t, fmt.Sprintf(HelloYourself, peer.ID()), string(resp.Body), "Response should match expected.")
-							assert.Equal(t, recip.ID(), resp.From, "Peer on response should match expected")
+							senderId, err := peer.ID()
+							if err != nil {
+								log.Fatalf("Unable to get sender id: %s", err)
+							}
+							assert.Equal(t, fmt.Sprintf(HelloYourself, senderId), string(resp.Body), "Response should match expected.")
+							assert.Equal(t, recipId, resp.From, "Peer on response should match expected")
 						}
 					}
 				}
