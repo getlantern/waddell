@@ -190,7 +190,7 @@ func doTestPeers(t *testing.T, useTLS bool) {
 								log.Fatalf("Unable to get sender id: %s", err)
 							}
 							assert.Equal(t, fmt.Sprintf(HelloYourself, senderId), string(resp.Body), "Response should match expected.")
-							assert.Equal(t, recipId, resp.From, "Peer on response should match expected")
+							assert.Equal(t, recipId, resp.Peer, "Peer on response should match expected")
 						}
 					}
 				}
@@ -211,7 +211,7 @@ func doTestPeers(t *testing.T, useTLS bool) {
 						log.Fatalf("Unable to read hello message: %s", err)
 					}
 					assert.Equal(t, Hello, string(msg.Body), "Hello message should match expected")
-					err = peer.Send(msg.From, 0, []byte(fmt.Sprintf(HelloYourself, msg.From)))
+					err = peer.Send(msg.Peer, 0, []byte(fmt.Sprintf(HelloYourself, msg.Peer)))
 					if err != nil {
 						log.Fatalf("Unable to write response to HELLO message: %s", err)
 					}

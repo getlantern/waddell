@@ -48,8 +48,8 @@
 //   80-143  Address Part 2  - 64-bit integer in Little Endian byte order for
 //                             second half of peer id
 //
-//   144-175 Channel ID      - 16-bit integer in Little Endian byte order
-//                             identifying the channel of the communication
+//   144-175 Topic ID        - 16-bit integer in Little Endian byte order
+//                             identifying the topic of the communication
 //
 //   176+    Message Body    - whatever data the client sent
 //
@@ -66,12 +66,12 @@ import (
 
 const (
 	PeerIdLength        = buuid.EncodedLength
-	ChannelIdLength     = 4
-	WaddellHeaderLength = PeerIdLength + ChannelIdLength
+	TopicIdLength       = 4
+	WaddellHeaderLength = PeerIdLength + TopicIdLength
 	WaddellOverhead     = framed.FrameHeaderSize + WaddellHeaderLength // bytes of overhead imposed by waddell
 	MaxDataLength       = framed.MaxFrameSize - WaddellOverhead
 
-	UnknownChannel = ChannelId(0)
+	UnknownTopic = TopicId(0)
 )
 
 var (
@@ -113,19 +113,19 @@ func (id PeerId) toBytes() []byte {
 	return buuid.ID(id).ToBytes()
 }
 
-// ChannelId identifies a channel for messages.
-type ChannelId uint16
+// TopicId identifies a topic for messages.
+type TopicId uint16
 
-func readChannelId(b []byte) (ChannelId, error) {
-	if len(b) < ChannelIdLength {
-		return 0, fmt.Errorf("Insufficient data for decoding 16-bit ChannelId")
+func readTopicId(b []byte) (TopicId, error) {
+	if len(b) < TopicIdLength {
+		return 0, fmt.Errorf("Insufficient data for decoding 16-bit TopicId")
 	}
 	id := endianness.Uint16(b)
-	return ChannelId(id), nil
+	return TopicId(id), nil
 }
 
-func (id ChannelId) toBytes() []byte {
-	b := make([]byte, ChannelIdLength)
+func (id TopicId) toBytes() []byte {
+	b := make([]byte, TopicIdLength)
 	endianness.PutUint16(b, uint16(id))
 	return b
 }

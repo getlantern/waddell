@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -18,11 +19,11 @@ var (
 
 // Message is a message read from a waddell server
 type Message struct {
-	// From is the id of the peer who sent the message
-	From PeerId
+	// Peer is the id of the peer from/to whom this message was/will be sent
+	Peer PeerId
 
-	// Channel is the channel on which this message was/will be posted
-	Channel ChannelId
+	// Topic is the topic to which this message was/will be posted
+	Topic TopicId
 
 	// Body is the content of the message
 	Body []byte
@@ -42,7 +43,16 @@ type Client struct {
 
 	connInfoChs chan chan *connInfo
 	connErrCh   chan error
+	topics      map[TopicId]*topic
+	topicsMutex sync.Mutex
 	closed      int32
+}
+
+type topic struct {
+	id     TopicId
+	client *Client
+	out    chan *Message
+	in     chan *Message
 }
 
 // Connect starts the waddell client and establishes an initial connection to
@@ -78,6 +88,32 @@ func Secured(dial func() (net.Conn, error), cert string) (func() (net.Conn, erro
 	}, nil
 }
 
+// Topic returns channels for writing to and reading from the topic identified
+// by the given id.
+func (c *Client) Topic(id TopicId) (out chan<- *Message, in <-chan *Message) {
+	c.topicsMutex.Lock()
+	defer c.topicsMutex.Unlock()
+	t := c.topics[id]
+	if t == nil {
+		t = &topic{
+			id:     id,
+			client: c,
+			out:    make(chan *Message),
+			in:     make(chan *Message),
+		}
+		c.topics[id] = t
+		go t.processOut()
+		//go t.processIn()
+	}
+	return t.out, t.in
+}
+
+func (t *topic) processOut() {
+	for msg := range t.out {
+		t.client.Send(msg.Peer, t.id, msg.Body)
+	}
+}
+
 // Receive reads the next Message from waddell.
 func (c *Client) Receive() (*Message, error) {
 	info := c.getConnInfo()
@@ -105,22 +141,22 @@ func (info *connInfo) receive() (*Message, error) {
 	if err != nil {
 		return nil, err
 	}
-	channel, err := readChannelId(frame[PeerIdLength:])
+	topic, err := readTopicId(frame[PeerIdLength:])
 	return &Message{
-		From:    peer,
-		Channel: channel,
-		Body:    frame[PeerIdLength+ChannelIdLength:],
+		Peer:  peer,
+		Topic: topic,
+		Body:  frame[PeerIdLength+TopicIdLength:],
 	}, nil
 }
 
 // Send sends the given body to the indiciated peer via waddell.
-func (c *Client) Send(to PeerId, channel ChannelId, body []byte) error {
+func (c *Client) Send(to PeerId, channel TopicId, body []byte) error {
 	return c.SendPieces(to, channel, body)
 }
 
 // SendPieces sends the given multi-piece body to the indiciated peer on the
 // given channel via waddell.
-func (c *Client) SendPieces(to PeerId, channel ChannelId, bodyPieces ...[]byte) error {
+func (c *Client) SendPieces(to PeerId, channel TopicId, bodyPieces ...[]byte) error {
 	info := c.getConnInfo()
 	if info.err != nil {
 		return info.err
@@ -244,7 +280,7 @@ func (c *Client) connectOnce() (*connInfo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Unable to get peerid: %s", err)
 	}
-	info.id = msg.From
+	info.id = msg.Peer
 	return info, nil
 }
 

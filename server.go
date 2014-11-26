@@ -115,8 +115,8 @@ func (p *peer) run() {
 	defer p.conn.Close()
 	defer p.server.removePeer(p.id)
 
-	// Tell the peer its id (and set channel to UnknownChannel)
-	_, err := p.writer.WritePieces(p.id.toBytes(), UnknownChannel.toBytes())
+	// Tell the peer its id (and set topic to UnknownTopic)
+	_, err := p.writer.WritePieces(p.id.toBytes(), UnknownTopic.toBytes())
 	if err != nil {
 		log.Debugf("Unable to send peerid on connect: %s", err)
 		return
