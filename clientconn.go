@@ -21,6 +21,9 @@ type Message struct {
 	// From is the id of the peer who sent the message
 	From PeerId
 
+	// Channel is the channel on which this message was/will be posted
+	Channel ChannelId
+
 	// Body is the content of the message
 	Body []byte
 }
@@ -95,29 +98,35 @@ func (info *connInfo) receive() (*Message, error) {
 	if err != nil {
 		return nil, err
 	}
+	if len(frame) < WaddellHeaderLength {
+		return nil, fmt.Errorf("Frame not long enough to contain waddell headers. Needed %d bytes, found only %d.", WaddellHeaderLength, len(frame))
+	}
 	peer, err := readPeerId(frame)
 	if err != nil {
 		return nil, err
 	}
+	channel, err := readChannelId(frame[PeerIdLength:])
 	return &Message{
-		From: peer,
-		Body: frame[PeerIdLength:],
+		From:    peer,
+		Channel: channel,
+		Body:    frame[PeerIdLength+ChannelIdLength:],
 	}, nil
 }
 
 // Send sends the given body to the indiciated peer via waddell.
-func (c *Client) Send(to PeerId, body []byte) error {
-	return c.SendPieces(to, body)
+func (c *Client) Send(to PeerId, channel ChannelId, body []byte) error {
+	return c.SendPieces(to, channel, body)
 }
 
-// SendPieces sends the given multi-piece body to the indiciated peer via
-// waddell.
-func (c *Client) SendPieces(to PeerId, bodyPieces ...[]byte) error {
+// SendPieces sends the given multi-piece body to the indiciated peer on the
+// given channel via waddell.
+func (c *Client) SendPieces(to PeerId, channel ChannelId, bodyPieces ...[]byte) error {
 	info := c.getConnInfo()
 	if info.err != nil {
 		return info.err
 	}
-	pieces := append([][]byte{to.toBytes()}, bodyPieces...)
+	pieces := [][]byte{to.toBytes(), channel.toBytes()}
+	pieces = append(pieces, bodyPieces...)
 	_, err := info.writer.WritePieces(pieces...)
 	if err != nil {
 		c.connError(err)

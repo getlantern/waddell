@@ -69,7 +69,7 @@ func TestBadDialerWithMultipleReconnect(t *testing.T) {
 	delta := time.Now().Sub(start)
 	assert.Error(t, err, "Connecting with no reconnect attempts should have failed")
 	expectedDelta := reconnectDelayInterval * 3
-	assert.True(t, delta >= expectedDelta, fmt.Sprintf("Redialing didn't wait long enough. Should have waited %s, only waited %s", expectedDelta, delta))
+	assert.True(t, delta >= expectedDelta, fmt.Sprintf("Reconnecting didn't wait long enough. Should have waited %s, only waited %s", expectedDelta, delta))
 }
 
 func doTestPeers(t *testing.T, useTLS bool) {
@@ -116,7 +116,7 @@ func doTestPeers(t *testing.T, useTLS bool) {
 	connect := func() *Client {
 		client := &Client{
 			Dial:              dial,
-			ReconnectAttempts: 100,
+			ReconnectAttempts: 1,
 		}
 		err := client.Connect()
 		if err != nil {
@@ -157,7 +157,7 @@ func doTestPeers(t *testing.T, useTLS bool) {
 		if err != nil {
 			log.Fatalf("Unable to get peer id: %s", err)
 		}
-		badPeer.Send(id, ld)
+		badPeer.Send(id, 0, ld)
 	}
 
 	// Simulate readers and writers
@@ -177,7 +177,7 @@ func doTestPeers(t *testing.T, useTLS bool) {
 					if err != nil {
 						log.Fatalf("Unable to get recip id: %s", err)
 					}
-					err = peer.Send(recipId, []byte(Hello))
+					err = peer.Send(recipId, 0, []byte(Hello))
 					if err != nil {
 						log.Fatalf("Unable to write hello: %s", err)
 					} else {
@@ -211,7 +211,7 @@ func doTestPeers(t *testing.T, useTLS bool) {
 						log.Fatalf("Unable to read hello message: %s", err)
 					}
 					assert.Equal(t, Hello, string(msg.Body), "Hello message should match expected")
-					err = peer.Send(msg.From, []byte(fmt.Sprintf(HelloYourself, msg.From)))
+					err = peer.Send(msg.From, 0, []byte(fmt.Sprintf(HelloYourself, msg.From)))
 					if err != nil {
 						log.Fatalf("Unable to write response to HELLO message: %s", err)
 					}

@@ -81,22 +81,22 @@ func (server *Server) Serve(listener net.Listener) error {
 		if err != nil {
 			return fmt.Errorf("Error accepting connection: %s", err)
 		}
-		c := server.addPeer(&peer{
+		p := server.addPeer(&peer{
 			server: server,
 			id:     randomPeerId(),
 			conn:   conn,
 			reader: framed.NewReader(conn),
 			writer: framed.NewWriter(conn),
 		})
-		go c.run()
+		go p.run()
 	}
 }
 
-func (server *Server) addPeer(c *peer) *peer {
+func (server *Server) addPeer(p *peer) *peer {
 	server.peersMutex.Lock()
 	defer server.peersMutex.Unlock()
-	server.peers[c.id] = c
-	return c
+	server.peers[p.id] = p
+	return p
 }
 
 func (server *Server) getPeer(id PeerId) *peer {
@@ -111,14 +111,12 @@ func (server *Server) removePeer(id PeerId) {
 	delete(server.peers, id)
 }
 
-func (peer *peer) run() {
-	defer peer.conn.Close()
-	defer peer.server.removePeer(peer.id)
+func (p *peer) run() {
+	defer p.conn.Close()
+	defer p.server.removePeer(p.id)
 
-	// Tell the peer its id
-	msg := peer.server.buffers.Get()[:PeerIdLength]
-	peer.id.write(msg)
-	_, err := peer.writer.Write(msg)
+	// Tell the peer its id (and set channel to UnknownChannel)
+	_, err := p.writer.WritePieces(p.id.toBytes(), UnknownChannel.toBytes())
 	if err != nil {
 		log.Debugf("Unable to send peerid on connect: %s", err)
 		return
@@ -126,16 +124,16 @@ func (peer *peer) run() {
 
 	// Read messages until there are no more to read
 	for {
-		if !peer.readNext() {
+		if !p.readNext() {
 			return
 		}
 	}
 }
 
-func (peer *peer) readNext() (ok bool) {
-	b := peer.server.buffers.Get()
-	defer peer.server.buffers.Put(b)
-	n, err := peer.reader.Read(b)
+func (p *peer) readNext() (ok bool) {
+	b := p.server.buffers.Get()
+	defer p.server.buffers.Put(b)
+	n, err := p.reader.Read(b)
 	if err != nil {
 		return false
 	}
@@ -150,13 +148,13 @@ func (peer *peer) readNext() (ok bool) {
 		log.Errorf("Unable to determine recipient: ", err.Error())
 		return true
 	}
-	cto := peer.server.getPeer(to)
+	cto := p.server.getPeer(to)
 	if cto == nil {
 		// Recipient not found
 		return true
 	}
 	// Set sender's id as the id in the message
-	err = peer.id.write(msg)
+	err = p.id.write(msg)
 	if err != nil {
 		return true
 	}

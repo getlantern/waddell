@@ -48,24 +48,36 @@
 //   80-143  Address Part 2  - 64-bit integer in Little Endian byte order for
 //                             second half of peer id
 //
-//   144+    Message Body    - whatever data the client sent
+//   144-175 Channel ID      - 16-bit integer in Little Endian byte order
+//                             identifying the channel of the communication
+//
+//   176+    Message Body    - whatever data the client sent
 //
 package waddell
 
 import (
+	"encoding/binary"
+	"fmt"
+
 	"github.com/getlantern/buuid"
 	"github.com/getlantern/framed"
 	"github.com/getlantern/golog"
 )
 
 const (
-	PeerIdLength    = buuid.EncodedLength
-	WaddellOverhead = 18 // bytes of overhead imposed by waddell
-	MaxDataLength   = framed.MaxFrameSize - WaddellOverhead
+	PeerIdLength        = buuid.EncodedLength
+	ChannelIdLength     = 4
+	WaddellHeaderLength = PeerIdLength + ChannelIdLength
+	WaddellOverhead     = framed.FrameHeaderSize + WaddellHeaderLength // bytes of overhead imposed by waddell
+	MaxDataLength       = framed.MaxFrameSize - WaddellOverhead
+
+	UnknownChannel = ChannelId(0)
 )
 
 var (
 	log = golog.LoggerFor("waddell.client")
+
+	endianness = binary.LittleEndian
 
 	keepAlive = []byte{'k'}
 )
@@ -99,4 +111,21 @@ func (id PeerId) write(b []byte) error {
 
 func (id PeerId) toBytes() []byte {
 	return buuid.ID(id).ToBytes()
+}
+
+// ChannelId identifies a channel for messages.
+type ChannelId uint16
+
+func readChannelId(b []byte) (ChannelId, error) {
+	if len(b) < ChannelIdLength {
+		return 0, fmt.Errorf("Insufficient data for decoding 16-bit ChannelId")
+	}
+	id := endianness.Uint16(b)
+	return ChannelId(id), nil
+}
+
+func (id ChannelId) toBytes() []byte {
+	b := make([]byte, ChannelIdLength)
+	endianness.PutUint16(b, uint16(id))
+	return b
 }
