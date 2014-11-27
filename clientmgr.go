@@ -31,6 +31,8 @@ type ClientMgr struct {
 	clientsMutex sync.Mutex
 }
 
+// ClientTo obtains the one (and only) client to the given addr, creating a new
+// one if necessary. This method is safe to call from multiple goroutines.
 func (m *ClientMgr) ClientTo(addr string) (*Client, PeerId, error) {
 	m.clientsMutex.Lock()
 	defer m.clientsMutex.Unlock()
@@ -63,6 +65,7 @@ func (m *ClientMgr) ClientTo(addr string) (*Client, PeerId, error) {
 	return client, id, nil
 }
 
+// Close closes this ClientMgr and all managed clients.
 func (m *ClientMgr) Close() []error {
 	errors := make([]error, 0)
 	m.clientsMutex.Lock()

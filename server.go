@@ -30,14 +30,6 @@ type Server struct {
 	buffers    *bpool.BytePool  // pool of buffers for reading/writing
 }
 
-type peer struct {
-	server *Server
-	id     PeerId
-	conn   net.Conn
-	reader *framed.Reader
-	writer *framed.Writer
-}
-
 // Listen creates a listener at the given address. pkfile and certfile are
 // optional. If both are specified, connections will be secured with TLS.
 func Listen(addr string, pkfile string, certfile string) (net.Listener, error) {
@@ -49,18 +41,6 @@ func Listen(addr string, pkfile string, certfile string) (net.Listener, error) {
 	} else {
 		return net.Listen("tcp", addr)
 	}
-}
-
-func listenTLS(addr string, pkfile string, certfile string) (net.Listener, error) {
-	cert, err := tls.LoadX509KeyPair(certfile, pkfile)
-	if err != nil {
-		return nil, fmt.Errorf("Unable to load cert and pk: %s", err)
-	}
-
-	cfg := tlsdefaults.Server()
-	cfg.MinVersion = tls.VersionTLS12 // force newest available version of TLS
-	cfg.Certificates = []tls.Certificate{cert}
-	return tls.Listen("tcp", addr, cfg)
 }
 
 // Serve starts the waddell server using the given listener
@@ -90,6 +70,26 @@ func (server *Server) Serve(listener net.Listener) error {
 		})
 		go p.run()
 	}
+}
+
+func listenTLS(addr string, pkfile string, certfile string) (net.Listener, error) {
+	cert, err := tls.LoadX509KeyPair(certfile, pkfile)
+	if err != nil {
+		return nil, fmt.Errorf("Unable to load cert and pk: %s", err)
+	}
+
+	cfg := tlsdefaults.Server()
+	cfg.MinVersion = tls.VersionTLS12 // force newest available version of TLS
+	cfg.Certificates = []tls.Certificate{cert}
+	return tls.Listen("tcp", addr, cfg)
+}
+
+type peer struct {
+	server *Server
+	id     PeerId
+	conn   net.Conn
+	reader *framed.Reader
+	writer *framed.Writer
 }
 
 func (server *Server) addPeer(p *peer) *peer {

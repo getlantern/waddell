@@ -51,6 +51,7 @@ type Client struct {
 	closed         int32
 }
 
+// DialFunc is a function for dialing a waddell server.
 type DialFunc func() (net.Conn, error)
 
 // Connect starts the waddell client and establishes an initial connection to
@@ -83,26 +84,6 @@ func (c *Client) Connect() (PeerId, error) {
 	go c.processInbound()
 	info := c.getConnInfo()
 	return info.id, info.err
-}
-
-// secured wraps the given dial function with TLS support, authenticating the
-// waddell server using the supplied cert (assumed to be PEM encoded).
-func secured(dial DialFunc, cert string) (DialFunc, error) {
-	c, err := keyman.LoadCertificateFromPEMBytes([]byte(cert))
-	if err != nil {
-		return nil, err
-	}
-	tlsConfig := &tls.Config{
-		RootCAs:    c.PoolContainingCert(),
-		ServerName: c.X509().Subject.CommonName,
-	}
-	return func() (net.Conn, error) {
-		conn, err := dial()
-		if err != nil {
-			return nil, err
-		}
-		return tls.Client(conn, tlsConfig), nil
-	}, nil
 }
 
 // SendKeepAlive sends a keep alive message to the server to keep the underlying
@@ -155,6 +136,26 @@ func (c *Client) Close() error {
 	}
 	close(c.connInfoChs)
 	return err
+}
+
+// secured wraps the given dial function with TLS support, authenticating the
+// waddell server using the supplied cert (assumed to be PEM encoded).
+func secured(dial DialFunc, cert string) (DialFunc, error) {
+	c, err := keyman.LoadCertificateFromPEMBytes([]byte(cert))
+	if err != nil {
+		return nil, err
+	}
+	tlsConfig := &tls.Config{
+		RootCAs:    c.PoolContainingCert(),
+		ServerName: c.X509().Subject.CommonName,
+	}
+	return func() (net.Conn, error) {
+		conn, err := dial()
+		if err != nil {
+			return nil, err
+		}
+		return tls.Client(conn, tlsConfig), nil
+	}, nil
 }
 
 func (c *Client) hasConnected() bool {
