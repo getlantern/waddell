@@ -24,6 +24,11 @@ type Client struct {
 	// Dial is a function that dials the waddell server
 	Dial DialFunc
 
+	// ServerCert: PEM-encoded certificate by which to authenticate the waddell
+	// server. If provided, connection to waddell is encrypted with TLS. If not,
+	// connection will be made plain-text.
+	ServerCert string
+
 	// ReconnectAttempts specifies how many consecutive times to try
 	// reconnecting in the event of a connection failure.
 	//
@@ -62,6 +67,14 @@ func (c *Client) Connect() (PeerId, error) {
 		return PeerId{}, fmt.Errorf("Client already connected")
 	}
 
+	var err error
+	if c.ServerCert != "" {
+		c.Dial, err = secured(c.Dial, c.ServerCert)
+		if err != nil {
+			return PeerId{}, err
+		}
+	}
+
 	c.connInfoChs = make(chan chan *connInfo)
 	c.connErrCh = make(chan error)
 	c.topicsOut = make(map[TopicId]*topic)
@@ -72,9 +85,9 @@ func (c *Client) Connect() (PeerId, error) {
 	return info.id, info.err
 }
 
-// Secured wraps the given dial function with TLS support, authenticating the
+// secured wraps the given dial function with TLS support, authenticating the
 // waddell server using the supplied cert (assumed to be PEM encoded).
-func Secured(dial DialFunc, cert string) (DialFunc, error) {
+func secured(dial DialFunc, cert string) (DialFunc, error) {
 	c, err := keyman.LoadCertificateFromPEMBytes([]byte(cert))
 	if err != nil {
 		return nil, err

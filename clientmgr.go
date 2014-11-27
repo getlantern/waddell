@@ -40,18 +40,11 @@ func (m *ClientMgr) ClientTo(addr string) (*Client, PeerId, error) {
 	}
 	client := m.clients[addr]
 	if client == nil {
-		dial := func() (net.Conn, error) {
-			return m.Dial(addr)
-		}
-		if m.ServerCert != "" {
-			var err error
-			dial, err = Secured(dial, m.ServerCert)
-			if err != nil {
-				return nil, PeerId{}, err
-			}
-		}
 		client = &Client{
-			Dial:              dial,
+			Dial: func() (net.Conn, error) {
+				return m.Dial(addr)
+			},
+			ServerCert:        m.ServerCert,
 			ReconnectAttempts: m.ReconnectAttempts,
 		}
 		if m.OnId != nil {

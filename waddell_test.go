@@ -186,17 +186,12 @@ func doTestPeers(t *testing.T, useTLS bool) {
 		}
 		return net.Dial("tcp", serverAddr)
 	}
-	if useTLS {
-		dial, err = Secured(dial, cert)
-		if err != nil {
-			log.Fatalf("Unable to secure dial function: %s", err)
-		}
-	}
 
 	idCallbackTriggered := int32(0)
 	connect := func() *clientWithId {
 		client := &Client{
 			Dial:              dial,
+			ServerCert:        cert,
 			ReconnectAttempts: 1,
 			OnId: func(id PeerId) {
 				atomic.AddInt32(&idCallbackTriggered, 1)
