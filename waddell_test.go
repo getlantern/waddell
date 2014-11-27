@@ -1,10 +1,13 @@
 package waddell
 
 import (
+	"bytes"
 	"fmt"
 	"io/ioutil"
 	"math/rand"
 	"net"
+	"os"
+	"os/exec"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -90,6 +93,12 @@ func TestBadDialerWithMultipleReconnect(t *testing.T) {
 	assert.True(t, delta >= expectedDelta, fmt.Sprintf("Reconnecting didn't wait long enough. Should have waited %s, only waited %s", expectedDelta, delta))
 }
 
+func TestCloseUnconnected(t *testing.T) {
+	client := &Client{}
+	err := client.Close()
+	assert.Error(t, err, "Closing unconnected client should fail")
+}
+
 func TestPeersPlainText(t *testing.T) {
 	doTestPeers(t, false)
 }
@@ -104,6 +113,47 @@ type clientWithId struct {
 }
 
 func doTestPeers(t *testing.T, useTLS bool) {
+	socketsAtStart := countTCPFiles()
+	closeActions := make([]func(), 0)
+	peers := make([]*clientWithId, 0, NumPeers)
+	defer func() {
+		for _, action := range closeActions {
+			action()
+		}
+		socketsAtEnd := countTCPFiles()
+		assert.Equal(t, socketsAtStart, socketsAtEnd, "All file descriptors should have been closed")
+
+		// Make sure we can't do stuff with closed client
+		client := peers[0].client
+
+		err := client.SendKeepAlive()
+		assert.Error(t, err, "Attempting to SendKeepAlive on closed client should fail")
+
+		err = client.Close()
+		assert.Error(t, err, "Attempting to close already closed client should fail")
+
+		// Make sure we can't obtain in or out topics after closing clients
+		defer func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Tracef("Recovered: %v", r)
+				}
+			}()
+			client.In(TestTopic)
+			t.Error("Attempting to get in topic on closed client should have panicked")
+		}()
+
+		defer func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Tracef("Recovered: %v", r)
+				}
+			}()
+			client.Out(TestTopic)
+			t.Error("Attempting to get out topic on closed client should have panicked")
+		}()
+	}()
+
 	pkfile := ""
 	certfile := ""
 	cert := ""
@@ -125,9 +175,6 @@ func doTestPeers(t *testing.T, useTLS bool) {
 	go func() {
 		server := &Server{}
 		err = server.Serve(listener)
-		if err != nil {
-			log.Fatalf("Unable to start server: %s", err)
-		}
 	}()
 
 	serverAddr := listener.Addr().String()
@@ -159,6 +206,8 @@ func doTestPeers(t *testing.T, useTLS bool) {
 		if err != nil {
 			log.Fatalf("Unable to connect client: %s", err)
 		}
+		_, err = client.Connect()
+		assert.Error(t, err, "Extra connect call should resulst in error")
 		return &clientWithId{id, client}
 	}
 
@@ -172,15 +221,14 @@ func doTestPeers(t *testing.T, useTLS bool) {
 		}()
 	}
 
-	peers := make([]*clientWithId, 0, NumPeers)
 	for i := 0; i < NumPeers; i++ {
-		peers = append(peers, <-peersCh)
+		peer := <-peersCh
+		peers = append(peers, peer)
+		closeActions = append(closeActions, func() {
+			err := peer.client.Close()
+			assert.NoError(t, err, "Closing client shouldn't result in error")
+		})
 	}
-	defer func() {
-		for _, peer := range peers {
-			peer.client.Close()
-		}
-	}()
 
 	var wg sync.WaitGroup
 	wg.Add(NumPeers)
@@ -205,6 +253,10 @@ func doTestPeers(t *testing.T, useTLS bool) {
 			cbId = id
 		},
 	}
+	closeActions = append(closeActions, func() {
+		errs := clientMgr.Close()
+		assert.Nil(t, errs, "Closing clientMgr shouldn't result in errors")
+	})
 
 	badPeer, badPeerId, err := clientMgr.ClientTo(serverAddr)
 	if err != nil {
@@ -269,6 +321,11 @@ func doTestPeers(t *testing.T, useTLS bool) {
 
 	wg.Wait()
 
+	// Close server last
+	closeActions = append(closeActions, func() {
+		err := listener.Close()
+		assert.NoError(t, err, "Closing listener shouldn't fail")
+	})
 	assert.Equal(t, NumPeers, idCallbackTriggered, "IdCallback should have been called once for each connected peer")
 }
 
@@ -278,4 +335,14 @@ func largeData() []byte {
 		b[i] = byte(rand.Int())
 	}
 	return b
+}
+
+// see https://groups.google.com/forum/#!topic/golang-nuts/c0AnWXjzNIA
+func countTCPFiles() int {
+	out, err := exec.Command("lsof", "-p", fmt.Sprintf("%v", os.Getpid())).Output()
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Tracef("lsof result: %s", string(out))
+	return bytes.Count(out, []byte("TCP"))
 }

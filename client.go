@@ -2,6 +2,7 @@ package waddell
 
 import (
 	"crypto/tls"
+	"fmt"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -13,6 +14,9 @@ import (
 var (
 	maxReconnectDelay      = 5 * time.Second
 	reconnectDelayInterval = 100 * time.Millisecond
+
+	notConnectedError = fmt.Errorf("Client not yet connected")
+	closedError       = fmt.Errorf("Client closed")
 )
 
 // Client is a client of a waddell server
@@ -38,6 +42,7 @@ type Client struct {
 	topicsOutMutex sync.Mutex
 	topicsIn       map[TopicId]chan *MessageIn
 	topicsInMutex  sync.Mutex
+	connected      int32
 	closed         int32
 }
 
@@ -52,6 +57,11 @@ type DialFunc func() (net.Conn, error)
 // Note - whether or not auto reconnecting is enabled, this method doesn't
 // return until a connection has been established or we've failed trying.
 func (c *Client) Connect() (PeerId, error) {
+	alreadyConnected := !atomic.CompareAndSwapInt32(&c.connected, 0, 1)
+	if alreadyConnected {
+		return PeerId{}, fmt.Errorf("Client already connected")
+	}
+
 	c.connInfoChs = make(chan chan *connInfo)
 	c.connErrCh = make(chan error)
 	c.topicsOut = make(map[TopicId]*topic)
@@ -85,6 +95,13 @@ func Secured(dial DialFunc, cert string) (DialFunc, error) {
 // SendKeepAlive sends a keep alive message to the server to keep the underlying
 // connection open.
 func (c *Client) SendKeepAlive() error {
+	if !c.hasConnected() {
+		return notConnectedError
+	}
+	if c.isClosed() {
+		return closedError
+	}
+
 	info := c.getConnInfo()
 	if info.err != nil {
 		return info.err
@@ -98,23 +115,39 @@ func (c *Client) SendKeepAlive() error {
 
 // Close closes this client and associated resources
 func (c *Client) Close() error {
-	justClosed := atomic.CompareAndSwapInt32(&c.closed, 0, 1)
-	if justClosed {
-		info := c.getConnInfo()
-		if info.conn != nil {
-			return info.conn.Close()
-		}
-		close(c.connInfoChs)
-		c.topicsInMutex.Lock()
-		defer c.topicsInMutex.Unlock()
-		c.topicsOutMutex.Lock()
-		defer c.topicsOutMutex.Unlock()
-		for _, t := range c.topicsOut {
-			close(t.out)
-		}
-		for _, ch := range c.topicsIn {
-			close(ch)
-		}
+	if !c.hasConnected() {
+		return notConnectedError
 	}
-	return nil
+	justClosed := atomic.CompareAndSwapInt32(&c.closed, 0, 1)
+	if !justClosed {
+		return closedError
+	}
+
+	var err error
+	log.Trace("Closing client")
+	c.topicsInMutex.Lock()
+	defer c.topicsInMutex.Unlock()
+	c.topicsOutMutex.Lock()
+	defer c.topicsOutMutex.Unlock()
+	for _, t := range c.topicsOut {
+		close(t.out)
+	}
+	for _, ch := range c.topicsIn {
+		close(ch)
+	}
+	info := c.getConnInfo()
+	if info.conn != nil {
+		err = info.conn.Close()
+		log.Trace("Closed client connection")
+	}
+	close(c.connInfoChs)
+	return err
+}
+
+func (c *Client) hasConnected() bool {
+	return c.connected == 1
+}
+
+func (c *Client) isClosed() bool {
+	return c.closed == 1
 }

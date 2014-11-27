@@ -7,6 +7,13 @@ import (
 // Out returns the (one and only) channel for writing to the topic identified by
 // the given id.
 func (c *Client) Out(id TopicId) chan<- *MessageOut {
+	if !c.hasConnected() {
+		panic(notConnectedError.Error())
+	}
+	if c.isClosed() {
+		panic("Attempted to obtain out topic on closed client")
+	}
+
 	c.topicsOutMutex.Lock()
 	defer c.topicsOutMutex.Unlock()
 	t := c.topicsOut[id]
@@ -25,6 +32,13 @@ func (c *Client) Out(id TopicId) chan<- *MessageOut {
 // In returns the (one and only) channel for receiving from the topic identified
 // by the given id.
 func (c *Client) In(id TopicId) <-chan *MessageIn {
+	if !c.hasConnected() {
+		panic(notConnectedError.Error())
+	}
+	if c.isClosed() {
+		panic("Attempted to obtain in topic on closed client")
+	}
+
 	return c.in(id, true)
 }
 
@@ -36,6 +50,9 @@ type topic struct {
 
 func (t *topic) processOut() {
 	for msg := range t.out {
+		if t.client.isClosed() {
+			return
+		}
 		info := t.client.getConnInfo()
 		if info.err != nil {
 			log.Errorf("Unable to get connection to waddell, stop sending to %s: %s", t.id, info.err)
@@ -66,6 +83,9 @@ func (c *Client) in(id TopicId, create bool) chan *MessageIn {
 
 func (c *Client) processInbound() {
 	for {
+		if c.isClosed() {
+			return
+		}
 		info := c.getConnInfo()
 		if info.err != nil {
 			log.Errorf("Unable to get connection to waddell, stop receiving: %s", info.err)

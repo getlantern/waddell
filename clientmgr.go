@@ -69,3 +69,19 @@ func (m *ClientMgr) ClientTo(addr string) (*Client, PeerId, error) {
 	id := m.ids[addr]
 	return client, id, nil
 }
+
+func (m *ClientMgr) Close() []error {
+	errors := make([]error, 0)
+	m.clientsMutex.Lock()
+	defer m.clientsMutex.Unlock()
+	for _, client := range m.clients {
+		err := client.Close()
+		if err != nil {
+			errors = append(errors, err)
+		}
+	}
+	if len(errors) == 0 {
+		return nil
+	}
+	return errors
+}
