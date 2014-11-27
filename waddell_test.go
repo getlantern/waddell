@@ -203,7 +203,7 @@ func doTestPeers(t *testing.T, useTLS bool) {
 				// Write to each reader
 				for j := 0; j < NumPeers; j += 2 {
 					recip := peers[j]
-					peer.client.Out(TestTopic) <- NewMessageOut(recip.id, []byte(Hello))
+					peer.client.Out(TestTopic) <- NewMessageOut(recip.id, []byte(Hello[:2]), []byte(Hello[2:]))
 					if err != nil {
 						log.Fatalf("Unable to write hello: %s", err)
 					} else {
