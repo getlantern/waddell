@@ -46,6 +46,12 @@ func (c *Client) connect() *connInfo {
 	var lastErr error
 	consecutiveFailures := 0
 	for {
+		if c.isClosed() {
+			log.Tracef("Connection closed, stop trying to connect")
+			return &connInfo{
+				err: closedError,
+			}
+		}
 		if consecutiveFailures > c.ReconnectAttempts {
 			log.Tracef("Done trying to connect: %s", lastErr)
 			return &connInfo{

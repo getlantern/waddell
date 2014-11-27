@@ -88,9 +88,21 @@ func TestBadDialerWithMultipleReconnect(t *testing.T) {
 	start := time.Now()
 	_, err := client.Connect()
 	delta := time.Now().Sub(start)
-	assert.Error(t, err, "Connecting with no reconnect attempts should have failed")
+	assert.Error(t, err, "Connecting with 2 reconnect attempts should have failed")
 	expectedDelta := reconnectDelayInterval * 3
 	assert.True(t, delta >= expectedDelta, fmt.Sprintf("Reconnecting didn't wait long enough. Should have waited %s, only waited %s", expectedDelta, delta))
+}
+
+func TestCloseFailing(t *testing.T) {
+	client := &Client{
+		ReconnectAttempts: 100,
+		Dial: func() (net.Conn, error) {
+			return nil, fmt.Errorf("I won't dial, no way!")
+		},
+	}
+	go client.Connect()
+	time.Sleep(100 * time.Millisecond)
+	client.Close()
 }
 
 func TestCloseUnconnected(t *testing.T) {
