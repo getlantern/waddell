@@ -22,8 +22,8 @@ type Message struct {
 	// Peer is the id of the peer from/to whom this message was/will be sent
 	Peer PeerId
 
-	// Topic is the topic to which this message was/will be posted
-	Topic TopicId
+	// topic is the topic to which this message was/will be posted
+	topic TopicId
 
 	// Body is the content of the message
 	Body []byte
