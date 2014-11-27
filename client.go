@@ -36,6 +36,12 @@ type Client struct {
 	// messages, it will simply reopen the connection.
 	ReconnectAttempts int
 
+	// IdChannel is a channel that publishes this client's PeerId as it first
+	// becomes available and changes on subsequent reconnects. A channel is used
+	// here because the PeerId changes with each reconnect.
+	IdChannel <-chan PeerId
+	idChannel chan PeerId
+
 	connInfoChs    chan chan *connInfo
 	connErrCh      chan error
 	topicsOut      map[TopicId]*topic
@@ -46,11 +52,16 @@ type Client struct {
 }
 
 // Connect starts the waddell client and establishes an initial connection to
-// the waddell server.
+// the waddell server, returning the initial PeerId.
+//
+// Note - if the client automatically reconnects, its peer ID will change. You
+// can obtain the new id from IdChannel.
 //
 // Note - whether or not auto reconnecting is enabled, this method doesn't
 // return until a connection has been established or we've failed trying.
-func (c *Client) Connect() error {
+func (c *Client) Connect() (PeerId, error) {
+	c.idChannel = make(chan PeerId, 100)
+	c.IdChannel = c.idChannel
 	c.connInfoChs = make(chan chan *connInfo)
 	c.connErrCh = make(chan error)
 	c.topicsOut = make(map[TopicId]*topic)
@@ -58,7 +69,7 @@ func (c *Client) Connect() error {
 	go c.stayConnected()
 	go c.processInbound()
 	info := c.getConnInfo()
-	return info.err
+	return info.id, info.err
 }
 
 // Secured wraps the given dial function with TLS support, authenticating the
@@ -116,12 +127,4 @@ func (c *Client) Close() error {
 		}
 	}
 	return nil
-}
-
-func (c *Client) ID() (PeerId, error) {
-	info := c.getConnInfo()
-	if info.err != nil {
-		return PeerId{}, info.err
-	}
-	return info.id, nil
 }

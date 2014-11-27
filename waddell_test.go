@@ -70,7 +70,7 @@ func TestBadDialerWithNoReconnect(t *testing.T) {
 		},
 	}
 	defer client.Close()
-	err := client.Connect()
+	_, err := client.Connect()
 	assert.Error(t, err, "Connecting with no reconnect attempts should have failed")
 }
 
@@ -83,7 +83,7 @@ func TestBadDialerWithMultipleReconnect(t *testing.T) {
 	}
 	defer client.Close()
 	start := time.Now()
-	err := client.Connect()
+	_, err := client.Connect()
 	delta := time.Now().Sub(start)
 	assert.Error(t, err, "Connecting with no reconnect attempts should have failed")
 	expectedDelta := reconnectDelayInterval * 3
@@ -96,6 +96,11 @@ func TestPeersPlainText(t *testing.T) {
 
 func TestPeersTLS(t *testing.T) {
 	doTestPeers(t, true)
+}
+
+type clientWithId struct {
+	id     PeerId
+	client *Client
 }
 
 func doTestPeers(t *testing.T, useTLS bool) {
@@ -139,19 +144,19 @@ func doTestPeers(t *testing.T, useTLS bool) {
 			log.Fatalf("Unable to secure dial function: %s", err)
 		}
 	}
-	connect := func() *Client {
+	connect := func() *clientWithId {
 		client := &Client{
 			Dial:              dial,
 			ReconnectAttempts: 1,
 		}
-		err := client.Connect()
+		id, err := client.Connect()
 		if err != nil {
 			log.Fatalf("Unable to connect client: %s", err)
 		}
-		return client
+		return &clientWithId{id, client}
 	}
 
-	peersCh := make(chan *Client, NumPeers)
+	peersCh := make(chan *clientWithId, NumPeers)
 	// Connect clients
 	for i := 0; i < NumPeers; i++ {
 		go func() {
@@ -161,13 +166,13 @@ func doTestPeers(t *testing.T, useTLS bool) {
 		}()
 	}
 
-	peers := make([]*Client, 0, NumPeers)
+	peers := make([]*clientWithId, 0, NumPeers)
 	for i := 0; i < NumPeers; i++ {
 		peers = append(peers, <-peersCh)
 	}
 	defer func() {
 		for _, peer := range peers {
-			peer.Close()
+			peer.client.Close()
 		}
 	}()
 
@@ -179,11 +184,10 @@ func doTestPeers(t *testing.T, useTLS bool) {
 	badPeer := connect()
 	ld := largeData()
 	for i := 0; i < 10; i++ {
-		id, err := badPeer.ID()
 		if err != nil {
 			log.Fatalf("Unable to get peer id: %s", err)
 		}
-		badPeer.Out(TestTopic) <- &Message{id, ld}
+		badPeer.client.Out(TestTopic) <- &Message{badPeer.id, ld}
 	}
 
 	// Simulate readers and writers
@@ -199,21 +203,13 @@ func doTestPeers(t *testing.T, useTLS bool) {
 				// Write to each reader
 				for j := 0; j < NumPeers; j += 2 {
 					recip := peers[j]
-					recipId, err := recip.ID()
-					if err != nil {
-						log.Fatalf("Unable to get recip id: %s", err)
-					}
-					peer.Out(TestTopic) <- &Message{recipId, []byte(Hello)}
+					peer.client.Out(TestTopic) <- &Message{recip.id, []byte(Hello)}
 					if err != nil {
 						log.Fatalf("Unable to write hello: %s", err)
 					} else {
-						resp := <-peer.In(TestTopic)
-						senderId, err := peer.ID()
-						if err != nil {
-							log.Fatalf("Unable to get sender id: %s", err)
-						}
-						assert.Equal(t, fmt.Sprintf(HelloYourself, senderId), string(resp.Body), "Response should match expected.")
-						assert.Equal(t, recipId, resp.Peer, "Peer on response should match expected")
+						resp := <-peer.client.In(TestTopic)
+						assert.Equal(t, fmt.Sprintf(HelloYourself, peer.id), string(resp.Body), "Response should match expected.")
+						assert.Equal(t, recip.id, resp.Peer, "Peer on response should match expected")
 					}
 				}
 			}()
@@ -224,13 +220,13 @@ func doTestPeers(t *testing.T, useTLS bool) {
 
 				// Read from all readers
 				for j := 1; j < NumPeers; j += 2 {
-					err := peer.SendKeepAlive()
+					err := peer.client.SendKeepAlive()
 					if err != nil {
 						log.Fatalf("Unable to send KeepAlive: %s", err)
 					}
-					msg := <-peer.In(TestTopic)
+					msg := <-peer.client.In(TestTopic)
 					assert.Equal(t, Hello, string(msg.Body), "Hello message should match expected")
-					peer.Out(TestTopic) <- &Message{msg.Peer, []byte(fmt.Sprintf(HelloYourself, msg.Peer))}
+					peer.client.Out(TestTopic) <- &Message{msg.Peer, []byte(fmt.Sprintf(HelloYourself, msg.Peer))}
 					if err != nil {
 						log.Fatalf("Unable to write response to HELLO message: %s", err)
 					}

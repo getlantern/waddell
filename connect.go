@@ -85,6 +85,12 @@ func (c *Client) connectOnce() (*connInfo, error) {
 		return nil, fmt.Errorf("Unable to get peerid: %s", err)
 	}
 	info.id = msg.m.Peer
+	select {
+	case c.idChannel <- info.id:
+		log.Trace("Published id")
+	default:
+		log.Trace("No one listening for id")
+	}
 	return info, nil
 }
 
