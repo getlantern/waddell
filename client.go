@@ -27,11 +27,10 @@ type Client struct {
 	// messages, it will simply reopen the connection.
 	ReconnectAttempts int
 
-	// IdChannel is a channel that publishes this client's PeerId as it first
-	// becomes available and changes on subsequent reconnects. A channel is used
-	// here because the PeerId changes with each reconnect.
-	UpdatedIdsCh <-chan PeerId
-	updatedIdsCh chan PeerId
+	// IdCallback allows optionally registering a callback to be notified
+	// whenever a PeerId is assigned to this client (i.e. on each successful
+	// connection to the waddell server).
+	IdCallback func(id PeerId)
 
 	connInfoChs    chan chan *connInfo
 	connErrCh      chan error
@@ -53,8 +52,6 @@ type DialFunc func() (net.Conn, error)
 // Note - whether or not auto reconnecting is enabled, this method doesn't
 // return until a connection has been established or we've failed trying.
 func (c *Client) Connect() (PeerId, error) {
-	c.updatedIdsCh = make(chan PeerId, 100)
-	c.UpdatedIdsCh = c.updatedIdsCh
 	c.connInfoChs = make(chan chan *connInfo)
 	c.connErrCh = make(chan error)
 	c.topicsOut = make(map[TopicId]*topic)

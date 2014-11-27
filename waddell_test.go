@@ -145,10 +145,15 @@ func doTestPeers(t *testing.T, useTLS bool) {
 			log.Fatalf("Unable to secure dial function: %s", err)
 		}
 	}
+
+	idCallbackTriggered := int32(0)
 	connect := func() *clientWithId {
 		client := &Client{
 			Dial:              dial,
 			ReconnectAttempts: 1,
+			IdCallback: func(id PeerId) {
+				atomic.AddInt32(&idCallbackTriggered, 1)
+			},
 		}
 		id, err := client.Connect()
 		if err != nil {
@@ -184,18 +189,31 @@ func doTestPeers(t *testing.T, useTLS bool) {
 	// handle blocked readers okay
 
 	// We include ClientMgr here to test it, not because it's convenient
+	var cbAddr string
+	var cbId PeerId
+	var cbMutex sync.Mutex
 	clientMgr := &ClientMgr{
 		Dial: func(addr string) (net.Conn, error) {
 			return net.Dial("tcp", addr)
 		},
 		ServerCert:        cert,
 		ReconnectAttempts: 1,
+		IdCallback: func(addr string, id PeerId) {
+			cbMutex.Lock()
+			defer cbMutex.Unlock()
+			cbAddr = addr
+			cbId = id
+		},
 	}
 
 	badPeer, badPeerId, err := clientMgr.ClientTo(serverAddr)
 	if err != nil {
 		log.Fatalf("Unable to connect bad peer: %s", err)
 	}
+	cbMutex.Lock()
+	assert.Equal(t, serverAddr, cbAddr, "IdCallback should have recorded the server's addr")
+	assert.Equal(t, badPeerId, cbId, "IdCallback should have recorded the correct id")
+	cbMutex.Unlock()
 	ld := largeData()
 	for i := 0; i < 10; i++ {
 		if err != nil {
@@ -250,6 +268,8 @@ func doTestPeers(t *testing.T, useTLS bool) {
 	}
 
 	wg.Wait()
+
+	assert.Equal(t, NumPeers, idCallbackTriggered, "IdCallback should have been called once for each connected peer")
 }
 
 func largeData() []byte {

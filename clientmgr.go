@@ -21,6 +21,11 @@ type ClientMgr struct {
 	// Client.ReconnectAttempts for more information.
 	ReconnectAttempts int
 
+	// IdCallback allows optionally registering a callback to be notified
+	// whenever a PeerId is assigned to the client connected to the indicated
+	// addr (i.e. on each successful connection to the waddell server at addr).
+	IdCallback func(addr string, id PeerId)
+
 	clients      map[string]*Client
 	ids          map[string]PeerId
 	clientsMutex sync.Mutex
@@ -48,6 +53,11 @@ func (m *ClientMgr) ClientTo(addr string) (*Client, PeerId, error) {
 		client = &Client{
 			Dial:              dial,
 			ReconnectAttempts: m.ReconnectAttempts,
+		}
+		if m.IdCallback != nil {
+			client.IdCallback = func(id PeerId) {
+				m.IdCallback(addr, id)
+			}
 		}
 		id, err := client.Connect()
 		if err != nil {
