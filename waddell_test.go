@@ -32,18 +32,34 @@ func TestPeerIdRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Errorf("Unable to read peer id: %s", err)
 	} else {
-		if read != orig {
-			t.Errorf("Read did not match original.  Expected: %s, Got: %s", orig, read)
-		}
+		assert.Equal(t, orig, read)
 	}
 }
 
-func TestPeersPlainText(t *testing.T) {
-	doTestPeers(t, false)
+func TestPeerIdStringRoundTrip(t *testing.T) {
+	orig := randomPeerId()
+	read, err := PeerIdFromString(orig.String())
+	if err != nil {
+		t.Errorf("Unable to read peer id: %s", err)
+	} else {
+		assert.Equal(t, orig, read)
+	}
 }
 
-func TestPeersTLS(t *testing.T) {
-	doTestPeers(t, true)
+func TestTopicIdRoundTrip(t *testing.T) {
+	orig := TopicId(5)
+	read, err := readTopicId(orig.toBytes())
+	if err != nil {
+		t.Errorf("Error reading topic id: %s", err)
+	} else {
+		assert.Equal(t, orig, read)
+	}
+}
+
+func TestTopicIdTruncation(t *testing.T) {
+	orig := TopicId(5)
+	_, err := readTopicId(orig.toBytes()[:1])
+	assert.Error(t, err)
 }
 
 func TestBadDialerWithNoReconnect(t *testing.T) {
@@ -72,6 +88,14 @@ func TestBadDialerWithMultipleReconnect(t *testing.T) {
 	assert.Error(t, err, "Connecting with no reconnect attempts should have failed")
 	expectedDelta := reconnectDelayInterval * 3
 	assert.True(t, delta >= expectedDelta, fmt.Sprintf("Reconnecting didn't wait long enough. Should have waited %s, only waited %s", expectedDelta, delta))
+}
+
+func TestPeersPlainText(t *testing.T) {
+	doTestPeers(t, false)
+}
+
+func TestPeersTLS(t *testing.T) {
+	doTestPeers(t, true)
 }
 
 func doTestPeers(t *testing.T, useTLS bool) {

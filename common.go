@@ -48,10 +48,10 @@
 //   80-143  Address Part 2  - 64-bit integer in Little Endian byte order for
 //                             second half of peer id
 //
-//   144-175 Topic ID        - 16-bit integer in Little Endian byte order
+//   144-159 Topic ID        - 16-bit integer in Little Endian byte order
 //                             identifying the topic of the communication
 //
-//   176+    Message Body    - whatever data the client sent
+//   160+    Message Body    - whatever data the client sent
 //
 package waddell
 
@@ -66,7 +66,7 @@ import (
 
 const (
 	PeerIdLength        = buuid.EncodedLength
-	TopicIdLength       = 4
+	TopicIdLength       = 2
 	WaddellHeaderLength = PeerIdLength + TopicIdLength
 	WaddellOverhead     = framed.FrameHeaderSize + WaddellHeaderLength // bytes of overhead imposed by waddell
 	MaxDataLength       = framed.MaxFrameSize - WaddellOverhead
