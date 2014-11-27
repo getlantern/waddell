@@ -20,9 +20,6 @@ type Message struct {
 	// Peer is the id of the peer from/to whom this message was/will be sent
 	Peer PeerId
 
-	// topic is the topic to which this message was/will be posted
-	topic TopicId
-
 	// Body is the content of the message
 	Body []byte
 }
@@ -56,6 +53,8 @@ type Client struct {
 func (c *Client) Connect() error {
 	c.connInfoChs = make(chan chan *connInfo)
 	c.connErrCh = make(chan error)
+	c.topicsOut = make(map[TopicId]*topic)
+	c.topicsIn = make(map[TopicId]chan *Message)
 	go c.stayConnected()
 	go c.processInbound()
 	info := c.getConnInfo()
@@ -96,6 +95,7 @@ func (c *Client) SendKeepAlive() error {
 	return err
 }
 
+// Close closes this client and associated resources
 func (c *Client) Close() error {
 	justClosed := atomic.CompareAndSwapInt32(&c.closed, 0, 1)
 	if justClosed {
@@ -104,6 +104,16 @@ func (c *Client) Close() error {
 			return info.conn.Close()
 		}
 		close(c.connInfoChs)
+		c.topicsInMutex.Lock()
+		defer c.topicsInMutex.Unlock()
+		c.topicsOutMutex.Lock()
+		defer c.topicsOutMutex.Unlock()
+		for _, t := range c.topicsOut {
+			close(t.out)
+		}
+		for _, ch := range c.topicsIn {
+			close(ch)
+		}
 	}
 	return nil
 }

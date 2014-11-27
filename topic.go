@@ -4,15 +4,9 @@ import (
 	"fmt"
 )
 
-type topic struct {
-	id     TopicId
-	client *Client
-	out    chan *Message
-}
-
-// TopicOut returns the (one and only) channel for writing to the topic
-// identified by the given id.
-func (c *Client) TopicOut(id TopicId) chan<- *Message {
+// Out returns the (one and only) channel for writing to the topic identified by
+// the given id.
+func (c *Client) Out(id TopicId) chan<- *Message {
 	c.topicsOutMutex.Lock()
 	defer c.topicsOutMutex.Unlock()
 	t := c.topicsOut[id]
@@ -28,6 +22,25 @@ func (c *Client) TopicOut(id TopicId) chan<- *Message {
 	return t.out
 }
 
+// In returns the (one and only) channel for receiving from the topic identified
+// by the given id.
+func (c *Client) In(id TopicId) <-chan *Message {
+	return c.in(id, true)
+}
+
+type topic struct {
+	id     TopicId
+	client *Client
+	out    chan *Message
+}
+
+type messageWithTopic struct {
+	m *Message
+
+	// topic is the topic to which this message was/will be posted
+	topic TopicId
+}
+
 func (t *topic) processOut() {
 	for msg := range t.out {
 		info := t.client.getConnInfo()
@@ -36,7 +49,7 @@ func (t *topic) processOut() {
 			t.client.Close()
 			return
 		}
-		_, err := info.writer.WritePieces(msg.Peer.toBytes(), msg.topic.toBytes(), msg.Body)
+		_, err := info.writer.WritePieces(msg.Peer.toBytes(), t.id.toBytes(), msg.Body)
 		if err != nil {
 			t.client.connError(err)
 			continue
@@ -44,13 +57,7 @@ func (t *topic) processOut() {
 	}
 }
 
-// TopicIn returns the (one and only) channel for receiving from the topic
-// identified by the given id.
-func (c *Client) TopicIn(id TopicId) <-chan *Message {
-	return c.topicIn(id, true)
-}
-
-func (c *Client) topicIn(id TopicId, create bool) chan *Message {
+func (c *Client) in(id TopicId, create bool) chan *Message {
 	c.topicsInMutex.Lock()
 	defer c.topicsInMutex.Unlock()
 	ch := c.topicsIn[id]
@@ -74,14 +81,14 @@ func (c *Client) processInbound() {
 			c.connError(err)
 			continue
 		}
-		topicIn := c.topicIn(msg.topic, false)
+		topicIn := c.in(msg.topic, false)
 		if topicIn != nil {
-			topicIn <- msg
+			topicIn <- msg.m
 		}
 	}
 }
 
-func (info *connInfo) receive() (*Message, error) {
+func (info *connInfo) receive() (*messageWithTopic, error) {
 	log.Trace("Receiving")
 	frame, err := info.reader.ReadFrame()
 	log.Tracef("Received %d: %s", len(frame), err)
@@ -96,9 +103,11 @@ func (info *connInfo) receive() (*Message, error) {
 		return nil, err
 	}
 	topic, err := readTopicId(frame[PeerIdLength:])
-	return &Message{
-		Peer:  peer,
+	return &messageWithTopic{
+		m: &Message{
+			Peer: peer,
+			Body: frame[PeerIdLength+TopicIdLength:],
+		},
 		topic: topic,
-		Body:  frame[PeerIdLength+TopicIdLength:],
 	}, nil
 }

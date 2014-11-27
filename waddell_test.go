@@ -18,6 +18,8 @@ const (
 	HelloYourself = "Hello %s!"
 
 	NumPeers = 100
+
+	TestTopic = TopicId(1)
 )
 
 // TestPeerIdRoundTrip makes sure that we can write and read a PeerId to/from a
@@ -157,7 +159,7 @@ func doTestPeers(t *testing.T, useTLS bool) {
 		if err != nil {
 			log.Fatalf("Unable to get peer id: %s", err)
 		}
-		badPeer.Send(id, 0, ld)
+		badPeer.Out(TestTopic) <- &Message{id, ld}
 	}
 
 	// Simulate readers and writers
@@ -177,21 +179,17 @@ func doTestPeers(t *testing.T, useTLS bool) {
 					if err != nil {
 						log.Fatalf("Unable to get recip id: %s", err)
 					}
-					err = peer.Send(recipId, 0, []byte(Hello))
+					peer.Out(TestTopic) <- &Message{recipId, []byte(Hello)}
 					if err != nil {
 						log.Fatalf("Unable to write hello: %s", err)
 					} else {
-						resp, err := peer.Receive()
+						resp := <-peer.In(TestTopic)
+						senderId, err := peer.ID()
 						if err != nil {
-							log.Fatalf("Unable to read response to hello: %s", err)
-						} else {
-							senderId, err := peer.ID()
-							if err != nil {
-								log.Fatalf("Unable to get sender id: %s", err)
-							}
-							assert.Equal(t, fmt.Sprintf(HelloYourself, senderId), string(resp.Body), "Response should match expected.")
-							assert.Equal(t, recipId, resp.Peer, "Peer on response should match expected")
+							log.Fatalf("Unable to get sender id: %s", err)
 						}
+						assert.Equal(t, fmt.Sprintf(HelloYourself, senderId), string(resp.Body), "Response should match expected.")
+						assert.Equal(t, recipId, resp.Peer, "Peer on response should match expected")
 					}
 				}
 			}()
@@ -206,12 +204,9 @@ func doTestPeers(t *testing.T, useTLS bool) {
 					if err != nil {
 						log.Fatalf("Unable to send KeepAlive: %s", err)
 					}
-					msg, err := peer.Receive()
-					if err != nil {
-						log.Fatalf("Unable to read hello message: %s", err)
-					}
+					msg := <-peer.In(TestTopic)
 					assert.Equal(t, Hello, string(msg.Body), "Hello message should match expected")
-					err = peer.Send(msg.Peer, 0, []byte(fmt.Sprintf(HelloYourself, msg.Peer)))
+					peer.Out(TestTopic) <- &Message{msg.Peer, []byte(fmt.Sprintf(HelloYourself, msg.Peer))}
 					if err != nil {
 						log.Fatalf("Unable to write response to HELLO message: %s", err)
 					}
