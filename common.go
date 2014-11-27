@@ -82,6 +82,24 @@ var (
 	keepAlive = []byte{'k'}
 )
 
+// MessageOut is a message to a waddell server
+type MessageOut struct {
+	To   PeerId
+	Body [][]byte
+}
+
+// MessageIn is a message to a waddell server
+type MessageIn struct {
+	From  PeerId
+	topic TopicId
+	Body  []byte
+}
+
+// NewMessage builds a new message to the given peer with the given body.
+func NewMessageOut(to PeerId, body ...[]byte) *MessageOut {
+	return &MessageOut{to, body}
+}
+
 // PeerId is an identifier for a waddell peer
 type PeerId buuid.ID
 

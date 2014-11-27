@@ -15,15 +15,6 @@ var (
 	reconnectDelayInterval = 100 * time.Millisecond
 )
 
-// Message is a message read from a waddell server
-type Message struct {
-	// Peer is the id of the peer from/to whom this message was/will be sent
-	Peer PeerId
-
-	// Body is the content of the message
-	Body []byte
-}
-
 // Client is a client of a waddell server
 type Client struct {
 	// Dial is a function that dials the waddell server
@@ -46,7 +37,7 @@ type Client struct {
 	connErrCh      chan error
 	topicsOut      map[TopicId]*topic
 	topicsOutMutex sync.Mutex
-	topicsIn       map[TopicId]chan *Message
+	topicsIn       map[TopicId]chan *MessageIn
 	topicsInMutex  sync.Mutex
 	closed         int32
 }
@@ -65,7 +56,7 @@ func (c *Client) Connect() (PeerId, error) {
 	c.connInfoChs = make(chan chan *connInfo)
 	c.connErrCh = make(chan error)
 	c.topicsOut = make(map[TopicId]*topic)
-	c.topicsIn = make(map[TopicId]chan *Message)
+	c.topicsIn = make(map[TopicId]chan *MessageIn)
 	go c.stayConnected()
 	go c.processInbound()
 	info := c.getConnInfo()

@@ -187,7 +187,7 @@ func doTestPeers(t *testing.T, useTLS bool) {
 		if err != nil {
 			log.Fatalf("Unable to get peer id: %s", err)
 		}
-		badPeer.client.Out(TestTopic) <- &Message{badPeer.id, ld}
+		badPeer.client.Out(TestTopic) <- NewMessageOut(badPeer.id, ld)
 	}
 
 	// Simulate readers and writers
@@ -203,13 +203,13 @@ func doTestPeers(t *testing.T, useTLS bool) {
 				// Write to each reader
 				for j := 0; j < NumPeers; j += 2 {
 					recip := peers[j]
-					peer.client.Out(TestTopic) <- &Message{recip.id, []byte(Hello)}
+					peer.client.Out(TestTopic) <- NewMessageOut(recip.id, []byte(Hello))
 					if err != nil {
 						log.Fatalf("Unable to write hello: %s", err)
 					} else {
 						resp := <-peer.client.In(TestTopic)
 						assert.Equal(t, fmt.Sprintf(HelloYourself, peer.id), string(resp.Body), "Response should match expected.")
-						assert.Equal(t, recip.id, resp.Peer, "Peer on response should match expected")
+						assert.Equal(t, recip.id, resp.From, "Peer on response should match expected")
 					}
 				}
 			}()
@@ -226,7 +226,7 @@ func doTestPeers(t *testing.T, useTLS bool) {
 					}
 					msg := <-peer.client.In(TestTopic)
 					assert.Equal(t, Hello, string(msg.Body), "Hello message should match expected")
-					peer.client.Out(TestTopic) <- &Message{msg.Peer, []byte(fmt.Sprintf(HelloYourself, msg.Peer))}
+					peer.client.Out(TestTopic) <- NewMessageOut(msg.From, []byte(fmt.Sprintf(HelloYourself, msg.From)))
 					if err != nil {
 						log.Fatalf("Unable to write response to HELLO message: %s", err)
 					}
