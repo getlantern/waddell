@@ -181,13 +181,39 @@ func doTestPeers(t *testing.T, useTLS bool) {
 
 	// Send some large data to a peer that doesn't read, just to make sure we
 	// handle blocked readers okay
-	badPeer := connect()
+
+	// We include ClientMgr here to test it, not because it's convenient
+	clientMgr := &ClientMgr{
+		Dial: func(addr string) (net.Conn, error) {
+			dial := func() (net.Conn, error) {
+				return net.Dial("tcp", addr)
+			}
+			if useTLS {
+				certBytes, err := ioutil.ReadFile(certfile)
+				if err != nil {
+					log.Fatalf("Unable to read cert from file: %s", err)
+				}
+				cert := string(certBytes)
+				dial, err = Secured(dial, cert)
+				if err != nil {
+					log.Fatalf("Unable to secure dial function: %s", err)
+				}
+			}
+			return dial()
+		},
+		ReconnectAttempts: 1,
+	}
+
+	badPeer, badPeerId, err := clientMgr.ClientTo(serverAddr)
+	if err != nil {
+		log.Fatalf("Unable to connect bad peer: %s", err)
+	}
 	ld := largeData()
 	for i := 0; i < 10; i++ {
 		if err != nil {
 			log.Fatalf("Unable to get peer id: %s", err)
 		}
-		badPeer.client.Out(TestTopic) <- NewMessageOut(badPeer.id, ld)
+		badPeer.Out(TestTopic) <- NewMessageOut(badPeerId, ld)
 	}
 
 	// Simulate readers and writers
