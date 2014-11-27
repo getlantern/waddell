@@ -5,10 +5,6 @@ import (
 	"sync"
 )
 
-// IdCallback is a callback for id (re)assignments for the client connected to
-// the indicated addr.
-type IdCallback func(addr string, id PeerId)
-
 // ClientMgr provides a mechanism for managing connections to multiple waddell
 // servers.
 type ClientMgr struct {
@@ -19,10 +15,6 @@ type ClientMgr struct {
 	// reconnecting in the event of a connection failure. See
 	// Client.ReconnectAttempts for more information.
 	ReconnectAttempts int
-
-	// IdCallback optional allows specifying a callback that gets notified
-	// everytime a client is assigned a new PeerId
-	IdCallback IdCallback
 
 	clients      map[string]*Client
 	ids          map[string]PeerId
@@ -50,14 +42,6 @@ func (m *ClientMgr) ClientTo(addr string) (*Client, PeerId, error) {
 		}
 		m.clients[addr] = client
 		m.ids[addr] = id
-		if m.IdCallback != nil {
-			m.IdCallback(addr, id)
-			go func() {
-				for id := range client.UpdatedIdsCh {
-					m.IdCallback(addr, id)
-				}
-			}()
-		}
 	}
 	id := m.ids[addr]
 	return client, id, nil
