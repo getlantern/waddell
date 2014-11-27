@@ -31,10 +31,10 @@ type Client struct {
 	// messages, it will simply reopen the connection.
 	ReconnectAttempts int
 
-	// IdCallback allows optionally registering a callback to be notified
-	// whenever a PeerId is assigned to this client (i.e. on each successful
-	// connection to the waddell server).
-	IdCallback func(id PeerId)
+	// OnId allows optionally registering a callback to be notified whenever a
+	// PeerId is assigned to this client (i.e. on each successful connection to
+	// the waddell server).
+	OnId func(id PeerId)
 
 	connInfoChs    chan chan *connInfo
 	connErrCh      chan error

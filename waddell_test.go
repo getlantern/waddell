@@ -198,7 +198,7 @@ func doTestPeers(t *testing.T, useTLS bool) {
 		client := &Client{
 			Dial:              dial,
 			ReconnectAttempts: 1,
-			IdCallback: func(id PeerId) {
+			OnId: func(id PeerId) {
 				atomic.AddInt32(&idCallbackTriggered, 1)
 			},
 		}
@@ -246,7 +246,7 @@ func doTestPeers(t *testing.T, useTLS bool) {
 		},
 		ServerCert:        cert,
 		ReconnectAttempts: 1,
-		IdCallback: func(addr string, id PeerId) {
+		OnId: func(addr string, id PeerId) {
 			cbMutex.Lock()
 			defer cbMutex.Unlock()
 			cbAddr = addr

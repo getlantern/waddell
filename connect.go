@@ -85,8 +85,8 @@ func (c *Client) connectOnce() (*connInfo, error) {
 		return nil, fmt.Errorf("Unable to get peerid: %s", err)
 	}
 	info.id = msg.From
-	if c.IdCallback != nil {
-		c.IdCallback(info.id)
+	if c.OnId != nil {
+		go c.OnId(info.id)
 	}
 	return info, nil
 }
