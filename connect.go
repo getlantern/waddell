@@ -86,7 +86,7 @@ func (c *Client) connectOnce() (*connInfo, error) {
 	}
 	info.id = msg.From
 	select {
-	case c.idChannel <- info.id:
+	case c.updatedIdsCh <- info.id:
 		log.Trace("Published id")
 	default:
 		log.Trace("No one listening for id")
