@@ -18,7 +18,7 @@ var (
 // Client is a client of a waddell server
 type Client struct {
 	// Dial is a function that dials the waddell server
-	Dial func() (net.Conn, error)
+	Dial DialFunc
 
 	// ReconnectAttempts specifies how many consecutive times to try
 	// reconnecting in the event of a connection failure.
@@ -41,6 +41,8 @@ type Client struct {
 	topicsInMutex  sync.Mutex
 	closed         int32
 }
+
+type DialFunc func() (net.Conn, error)
 
 // Connect starts the waddell client and establishes an initial connection to
 // the waddell server, returning the initial PeerId.
@@ -65,7 +67,7 @@ func (c *Client) Connect() (PeerId, error) {
 
 // Secured wraps the given dial function with TLS support, authenticating the
 // waddell server using the supplied cert (assumed to be PEM encoded).
-func Secured(dial func() (net.Conn, error), cert string) (func() (net.Conn, error), error) {
+func Secured(dial DialFunc, cert string) (DialFunc, error) {
 	c, err := keyman.LoadCertificateFromPEMBytes([]byte(cert))
 	if err != nil {
 		return nil, err
