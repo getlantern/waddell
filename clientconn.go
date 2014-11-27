@@ -41,18 +41,19 @@ type Client struct {
 	// messages, it will simply reopen the connection.
 	ReconnectAttempts int
 
-	connInfoChs chan chan *connInfo
-	connErrCh   chan error
-	topics      map[TopicId]*topic
-	topicsMutex sync.Mutex
-	closed      int32
+	connInfoChs    chan chan *connInfo
+	connErrCh      chan error
+	topicsOut      map[TopicId]*topic
+	topicsOutMutex sync.Mutex
+	topicsIn       map[TopicId]chan *Message
+	topicsInMutex  sync.Mutex
+	closed         int32
 }
 
 type topic struct {
 	id     TopicId
 	client *Client
 	out    chan *Message
-	in     chan *Message
 }
 
 // Connect starts the waddell client and establishes an initial connection to
@@ -63,7 +64,8 @@ type topic struct {
 func (c *Client) Connect() error {
 	c.connInfoChs = make(chan chan *connInfo)
 	c.connErrCh = make(chan error)
-	go c.run()
+	go c.stayConnected()
+	go c.processInbound()
 	info := c.getConnInfo()
 	return info.err
 }
@@ -88,86 +90,55 @@ func Secured(dial func() (net.Conn, error), cert string) (func() (net.Conn, erro
 	}, nil
 }
 
-// Topic returns channels for writing to and reading from the topic identified
-// by the given id.
-func (c *Client) Topic(id TopicId) (out chan<- *Message, in <-chan *Message) {
-	c.topicsMutex.Lock()
-	defer c.topicsMutex.Unlock()
-	t := c.topics[id]
+// TopicOut returns the (one and only) channel for writing to the topic
+// identified by the given id.
+func (c *Client) TopicOut(id TopicId) chan<- *Message {
+	c.topicsOutMutex.Lock()
+	defer c.topicsOutMutex.Unlock()
+	t := c.topicsOut[id]
 	if t == nil {
 		t = &topic{
 			id:     id,
 			client: c,
 			out:    make(chan *Message),
-			in:     make(chan *Message),
 		}
-		c.topics[id] = t
+		c.topicsOut[id] = t
 		go t.processOut()
-		//go t.processIn()
 	}
-	return t.out, t.in
+	return t.out
 }
 
 func (t *topic) processOut() {
 	for msg := range t.out {
-		t.client.Send(msg.Peer, t.id, msg.Body)
+		info := t.client.getConnInfo()
+		if info.err != nil {
+			log.Errorf("Unable to get connection to waddell, stop sending to %s: %s", t.id, info.err)
+			t.client.Close()
+			return
+		}
+		_, err := info.writer.WritePieces(msg.Peer.toBytes(), msg.Topic.toBytes(), msg.Body)
+		if err != nil {
+			t.client.connError(err)
+			continue
+		}
 	}
 }
 
-// Receive reads the next Message from waddell.
-func (c *Client) Receive() (*Message, error) {
-	info := c.getConnInfo()
-	if info.err != nil {
-		return nil, info.err
-	}
-	msg, err := info.receive()
-	if err != nil {
-		c.connError(err)
-	}
-	return msg, err
+// TopicIn returns the (one and only) channel for receiving from the topic
+// identified by the given id.
+func (c *Client) TopicIn(id TopicId) <-chan *Message {
+	return c.topicIn(id, true)
 }
 
-func (info *connInfo) receive() (*Message, error) {
-	log.Trace("Receiving")
-	frame, err := info.reader.ReadFrame()
-	log.Tracef("Received %d: %s", len(frame), err)
-	if err != nil {
-		return nil, err
+func (c *Client) topicIn(id TopicId, create bool) chan *Message {
+	c.topicsInMutex.Lock()
+	defer c.topicsInMutex.Unlock()
+	ch := c.topicsIn[id]
+	if ch == nil && create {
+		ch = make(chan *Message)
+		c.topicsIn[id] = ch
 	}
-	if len(frame) < WaddellHeaderLength {
-		return nil, fmt.Errorf("Frame not long enough to contain waddell headers. Needed %d bytes, found only %d.", WaddellHeaderLength, len(frame))
-	}
-	peer, err := readPeerId(frame)
-	if err != nil {
-		return nil, err
-	}
-	topic, err := readTopicId(frame[PeerIdLength:])
-	return &Message{
-		Peer:  peer,
-		Topic: topic,
-		Body:  frame[PeerIdLength+TopicIdLength:],
-	}, nil
-}
-
-// Send sends the given body to the indiciated peer via waddell.
-func (c *Client) Send(to PeerId, channel TopicId, body []byte) error {
-	return c.SendPieces(to, channel, body)
-}
-
-// SendPieces sends the given multi-piece body to the indiciated peer on the
-// given channel via waddell.
-func (c *Client) SendPieces(to PeerId, channel TopicId, bodyPieces ...[]byte) error {
-	info := c.getConnInfo()
-	if info.err != nil {
-		return info.err
-	}
-	pieces := [][]byte{to.toBytes(), channel.toBytes()}
-	pieces = append(pieces, bodyPieces...)
-	_, err := info.writer.WritePieces(pieces...)
-	if err != nil {
-		c.connError(err)
-	}
-	return err
+	return ch
 }
 
 // SendKeepAlive sends a keep alive message to the server to keep the underlying
@@ -204,6 +175,48 @@ func (c *Client) ID() (PeerId, error) {
 	return info.id, nil
 }
 
+func (c *Client) processInbound() {
+	for {
+		info := c.getConnInfo()
+		if info.err != nil {
+			log.Errorf("Unable to get connection to waddell, stop receiving: %s", info.err)
+			c.Close()
+			return
+		}
+		msg, err := info.receive()
+		if err != nil {
+			c.connError(err)
+			continue
+		}
+		topicIn := c.topicIn(msg.Topic, false)
+		if topicIn != nil {
+			topicIn <- msg
+		}
+	}
+}
+
+func (info *connInfo) receive() (*Message, error) {
+	log.Trace("Receiving")
+	frame, err := info.reader.ReadFrame()
+	log.Tracef("Received %d: %s", len(frame), err)
+	if err != nil {
+		return nil, err
+	}
+	if len(frame) < WaddellHeaderLength {
+		return nil, fmt.Errorf("Frame not long enough to contain waddell headers. Needed %d bytes, found only %d.", WaddellHeaderLength, len(frame))
+	}
+	peer, err := readPeerId(frame)
+	if err != nil {
+		return nil, err
+	}
+	topic, err := readTopicId(frame[PeerIdLength:])
+	return &Message{
+		Peer:  peer,
+		Topic: topic,
+		Body:  frame[PeerIdLength+TopicIdLength:],
+	}, nil
+}
+
 type connInfo struct {
 	id     PeerId
 	conn   net.Conn
@@ -212,7 +225,7 @@ type connInfo struct {
 	err    error
 }
 
-func (c *Client) run() {
+func (c *Client) stayConnected() {
 	var info *connInfo
 	for {
 		select {
