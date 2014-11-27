@@ -11,6 +11,11 @@ type ClientMgr struct {
 	// Dial is a function that dials the waddell server at the given addr.
 	Dial func(addr string) (net.Conn, error)
 
+	// ServerCert: PEM-encoded certificate by which to authenticate the waddell
+	// server. If provided, connection to waddell is encrypted with TLS. If not,
+	// connection will be made plain-text.
+	ServerCert string
+
 	// ReconnectAttempts specifies how many consecutive times to try
 	// reconnecting in the event of a connection failure. See
 	// Client.ReconnectAttempts for more information.
@@ -30,10 +35,18 @@ func (m *ClientMgr) ClientTo(addr string) (*Client, PeerId, error) {
 	}
 	client := m.clients[addr]
 	if client == nil {
+		dial := func() (net.Conn, error) {
+			return m.Dial(addr)
+		}
+		if m.ServerCert != "" {
+			var err error
+			dial, err = Secured(dial, m.ServerCert)
+			if err != nil {
+				return nil, PeerId{}, err
+			}
+		}
 		client = &Client{
-			Dial: func() (net.Conn, error) {
-				return m.Dial(addr)
-			},
+			Dial:              dial,
 			ReconnectAttempts: m.ReconnectAttempts,
 		}
 		id, err := client.Connect()

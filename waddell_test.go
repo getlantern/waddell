@@ -106,9 +106,15 @@ type clientWithId struct {
 func doTestPeers(t *testing.T, useTLS bool) {
 	pkfile := ""
 	certfile := ""
+	cert := ""
 	if useTLS {
 		pkfile = "waddell_test_pk.pem"
 		certfile = "waddell_test_cert.pem"
+		certBytes, err := ioutil.ReadFile(certfile)
+		if err != nil {
+			log.Fatalf("Unable to read cert from file: %s", err)
+		}
+		cert = string(certBytes)
 	}
 
 	listener, err := Listen("localhost:0", pkfile, certfile)
@@ -134,11 +140,6 @@ func doTestPeers(t *testing.T, useTLS bool) {
 		return net.Dial("tcp", serverAddr)
 	}
 	if useTLS {
-		certBytes, err := ioutil.ReadFile(certfile)
-		if err != nil {
-			log.Fatalf("Unable to read cert from file: %s", err)
-		}
-		cert := string(certBytes)
 		dial, err = Secured(dial, cert)
 		if err != nil {
 			log.Fatalf("Unable to secure dial function: %s", err)
@@ -185,22 +186,9 @@ func doTestPeers(t *testing.T, useTLS bool) {
 	// We include ClientMgr here to test it, not because it's convenient
 	clientMgr := &ClientMgr{
 		Dial: func(addr string) (net.Conn, error) {
-			dial := func() (net.Conn, error) {
-				return net.Dial("tcp", addr)
-			}
-			if useTLS {
-				certBytes, err := ioutil.ReadFile(certfile)
-				if err != nil {
-					log.Fatalf("Unable to read cert from file: %s", err)
-				}
-				cert := string(certBytes)
-				dial, err = Secured(dial, cert)
-				if err != nil {
-					log.Fatalf("Unable to secure dial function: %s", err)
-				}
-			}
-			return dial()
+			return net.Dial("tcp", addr)
 		},
+		ServerCert:        cert,
 		ReconnectAttempts: 1,
 	}
 
