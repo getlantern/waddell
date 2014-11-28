@@ -107,7 +107,11 @@ func (c *Client) SendKeepAlive() error {
 	return err
 }
 
-// Close closes this client and associated resources
+// Close closes this client, its topics and associated resources.
+//
+// WARNING - Close() closes the out topic channels. Attempts to write to these
+// channels after they're closed will result in a panic. So, don't call Close()
+// until you're actually 100% finished using this client.
 func (c *Client) Close() error {
 	if !c.hasConnected() {
 		return notConnectedError
