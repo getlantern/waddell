@@ -95,8 +95,8 @@ type MessageIn struct {
 	Body  []byte
 }
 
-// NewMessage builds a new message to the given peer with the given body.
-func NewMessageOut(to PeerId, body ...[]byte) *MessageOut {
+// Message builds a new message to the given peer with the given body.
+func Message(to PeerId, body ...[]byte) *MessageOut {
 	return &MessageOut{to, body}
 }
 
