@@ -75,7 +75,7 @@ const (
 )
 
 var (
-	log = golog.LoggerFor("waddell.client")
+	log = golog.LoggerFor("waddell")
 
 	endianness = binary.LittleEndian
 
