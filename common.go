@@ -68,8 +68,8 @@ const (
 	PeerIdLength        = buuid.EncodedLength
 	TopicIdLength       = 2
 	WaddellHeaderLength = PeerIdLength + TopicIdLength
-	WaddellOverhead     = framed.FrameHeaderSize + WaddellHeaderLength // bytes of overhead imposed by waddell
-	MaxDataLength       = framed.MaxFrameSize - WaddellOverhead
+	WaddellOverhead     = framed.FrameHeaderLength + WaddellHeaderLength // bytes of overhead imposed by waddell
+	MaxDataLength       = framed.MaxFrameLength - WaddellOverhead
 
 	UnknownTopic = TopicId(0)
 )

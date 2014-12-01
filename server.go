@@ -50,7 +50,7 @@ func (server *Server) Serve(listener net.Listener) error {
 		server.NumBuffers = DefaultNumBuffers
 	}
 	if server.BufferBytes == 0 {
-		server.BufferBytes = framed.MaxFrameSize
+		server.BufferBytes = framed.MaxFrameLength
 	}
 
 	server.buffers = bpool.NewBytePool(server.NumBuffers, server.BufferBytes)
