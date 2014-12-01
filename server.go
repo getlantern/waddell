@@ -13,6 +13,8 @@ import (
 
 const (
 	DefaultNumBuffers = 10000
+
+	numAddPeerAttempts = 100
 )
 
 // Server is a waddell server
@@ -61,13 +63,19 @@ func (server *Server) Serve(listener net.Listener) error {
 		if err != nil {
 			return fmt.Errorf("Error accepting connection: %s", err)
 		}
-		p := server.addPeer(&peer{
+		p, err := server.addPeer(&peer{
 			server: server,
-			id:     randomPeerId(),
 			conn:   conn,
 			reader: framed.NewReader(conn),
 			writer: framed.NewWriter(conn),
 		})
+		if err != nil {
+			// Note - we only enter here if we failed to find a unique UUID
+			// within numAddPeerAttempts tries, which is pretty much impossible.
+			log.Error(err)
+			conn.Close()
+			continue
+		}
 		go p.run()
 	}
 }
@@ -92,11 +100,24 @@ type peer struct {
 	writer *framed.Writer
 }
 
-func (server *Server) addPeer(p *peer) *peer {
+func (server *Server) addPeer(p *peer) (*peer, error) {
 	server.peersMutex.Lock()
 	defer server.peersMutex.Unlock()
-	server.peers[p.id] = p
-	return p
+	peerAdded := false
+	for i := 0; i < numAddPeerAttempts; i++ {
+		p.id = randomPeerId()
+		_, exists := server.peers[p.id]
+		if exists {
+			// We had an ID collision, try assigning a different ID.
+			continue
+		}
+		server.peers[p.id] = p
+		peerAdded = true
+	}
+	if !peerAdded {
+		return nil, fmt.Errorf("Unable to find unique UUID within %d tries", numAddPeerAttempts)
+	}
+	return p, nil
 }
 
 func (server *Server) getPeer(id PeerId) *peer {
@@ -160,8 +181,13 @@ func (p *peer) readNext() (ok bool) {
 	}
 	_, err = cto.writer.Write(msg)
 	if err != nil {
-		cto.conn.Close()
+		log.Tracef("%s unable to write to recipient %s: %s", p.id, to, err)
+		cto.disconnect()
 		return true
 	}
 	return true
+}
+
+func (p *peer) disconnect() {
+	p.conn.Close()
 }
