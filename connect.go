@@ -42,18 +42,11 @@ func (c *Client) stayConnected() {
 func (c *Client) connect() *connInfo {
 	log.Trace("Connecting ...")
 	var lastErr error
-	consecutiveFailures := 0
-	for {
+	for consecutiveFailures := 0; consecutiveFailures <= c.ReconnectAttempts; consecutiveFailures++ {
 		if c.isClosed() {
 			log.Tracef("Connection closed, stop trying to connect")
 			return &connInfo{
 				err: closedError,
-			}
-		}
-		if consecutiveFailures > c.ReconnectAttempts {
-			log.Tracef("Done trying to connect: %s", lastErr)
-			return &connInfo{
-				err: fmt.Errorf("Unable to connect: %s", lastErr),
 			}
 		}
 		delay := time.Duration(consecutiveFailures) * reconnectDelayInterval
@@ -69,8 +62,11 @@ func (c *Client) connect() *connInfo {
 		log.Tracef("Unable to connect: %s", err)
 		lastErr = err
 		info = nil
-		consecutiveFailures += 1
 	}
+
+	err := fmt.Errorf("Unable to connect within %d tries: %s", c.ReconnectAttempts+1, lastErr)
+	log.Trace(err)
+	return &connInfo{err: err}
 }
 
 func (c *Client) connectOnce() (*connInfo, error) {
