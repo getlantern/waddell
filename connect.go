@@ -88,6 +88,7 @@ func (c *Client) connectOnce() (*connInfo, error) {
 	if c.OnId != nil {
 		go c.OnId(info.id)
 	}
+	c.setCurrentId(info.id)
 	return info, nil
 }
 

@@ -15,12 +15,10 @@ var (
 	maxReconnectDelay      = 5 * time.Second
 	reconnectDelayInterval = 100 * time.Millisecond
 
-	notConnectedError = fmt.Errorf("Client not yet connected")
-	closedError       = fmt.Errorf("Client closed")
+	closedError = fmt.Errorf("Client closed")
 )
 
-// Client is a client of a waddell server
-type Client struct {
+type ClientConfig struct {
 	// Dial is a function that dials the waddell server
 	Dial DialFunc
 
@@ -40,6 +38,11 @@ type Client struct {
 	// PeerId is assigned to this client (i.e. on each successful connection to
 	// the waddell server).
 	OnId func(id PeerId)
+}
+
+// Client is a client of a waddell server
+type Client struct {
+	*ClientConfig
 
 	connInfoChs    chan chan *connInfo
 	connErrCh      chan error
@@ -47,32 +50,32 @@ type Client struct {
 	topicsOutMutex sync.Mutex
 	topicsIn       map[TopicId]chan *MessageIn
 	topicsInMutex  sync.Mutex
-	connected      int32
+	currentId      PeerId
+	currentIdMutex sync.RWMutex
 	closed         int32
 }
 
 // DialFunc is a function for dialing a waddell server.
 type DialFunc func() (net.Conn, error)
 
-// Connect starts the waddell client and establishes an initial connection to
-// the waddell server, returning the initial PeerId.
+// NewClient creates a waddell client, including establishing an initial
+// connection to the waddell server, returning the client and the initial
+// PeerId.
 //
 // Note - if the client automatically reconnects, its peer ID will change. You
 // can obtain the new id through providing an OnId callback to the client.
 //
 // Note - whether or not auto reconnecting is enabled, this method doesn't
 // return until a connection has been established or we've failed trying.
-func (c *Client) Connect() (PeerId, error) {
-	alreadyConnected := !atomic.CompareAndSwapInt32(&c.connected, 0, 1)
-	if alreadyConnected {
-		return PeerId{}, fmt.Errorf("Client already connecting or connected")
+func NewClient(cfg *ClientConfig) (*Client, error) {
+	c := &Client{
+		ClientConfig: cfg,
 	}
-
 	var err error
 	if c.ServerCert != "" {
 		c.Dial, err = secured(c.Dial, c.ServerCert)
 		if err != nil {
-			return PeerId{}, err
+			return nil, err
 		}
 	}
 
@@ -83,15 +86,26 @@ func (c *Client) Connect() (PeerId, error) {
 	go c.stayConnected()
 	go c.processInbound()
 	info := c.getConnInfo()
-	return info.id, info.err
+	return c, info.err
+}
+
+// CurrentId returns the current id (from most recent connection to waddell).
+// To be notified about changes to the id, use the OnId handler.
+func (c *Client) CurrentId() PeerId {
+	c.currentIdMutex.RLock()
+	defer c.currentIdMutex.RUnlock()
+	return c.currentId
+}
+
+func (c *Client) setCurrentId(id PeerId) {
+	c.currentIdMutex.Lock()
+	c.currentId = id
+	c.currentIdMutex.Unlock()
 }
 
 // SendKeepAlive sends a keep alive message to the server to keep the underlying
 // connection open.
 func (c *Client) SendKeepAlive() error {
-	if !c.hasConnected() {
-		return notConnectedError
-	}
 	if c.isClosed() {
 		return closedError
 	}
@@ -113,12 +127,13 @@ func (c *Client) SendKeepAlive() error {
 // channels after they're closed will result in a panic. So, don't call Close()
 // until you're actually 100% finished using this client.
 func (c *Client) Close() error {
-	if !c.hasConnected() {
-		return notConnectedError
+	if c == nil {
+		return nil
 	}
+
 	justClosed := atomic.CompareAndSwapInt32(&c.closed, 0, 1)
 	if !justClosed {
-		return closedError
+		return nil
 	}
 
 	var err error
@@ -160,10 +175,6 @@ func secured(dial DialFunc, cert string) (DialFunc, error) {
 		}
 		return tls.Client(conn, tlsConfig), nil
 	}, nil
-}
-
-func (c *Client) hasConnected() bool {
-	return c.connected == 1
 }
 
 func (c *Client) isClosed() bool {

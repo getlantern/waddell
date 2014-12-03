@@ -66,49 +66,33 @@ func TestTopicIdTruncation(t *testing.T) {
 }
 
 func TestBadDialerWithNoReconnect(t *testing.T) {
-	client := &Client{
+	cfg := &ClientConfig{
 		ReconnectAttempts: 0,
 		Dial: func() (net.Conn, error) {
 			return nil, fmt.Errorf("I won't dial, no way!")
 		},
 	}
-	defer client.Close()
-	_, err := client.Connect()
+	client, err := NewClient(cfg)
 	assert.Error(t, err, "Connecting with no reconnect attempts should have failed")
+	if err == nil {
+		client.Close()
+	}
 }
 
 func TestBadDialerWithMultipleReconnect(t *testing.T) {
-	client := &Client{
+	cfg := &ClientConfig{
 		ReconnectAttempts: 2,
 		Dial: func() (net.Conn, error) {
 			return nil, fmt.Errorf("I won't dial, no way!")
 		},
 	}
-	defer client.Close()
 	start := time.Now()
-	_, err := client.Connect()
+	client, err := NewClient(cfg)
+	defer client.Close()
 	delta := time.Now().Sub(start)
 	assert.Error(t, err, "Connecting with 2 reconnect attempts should have failed")
 	expectedDelta := reconnectDelayInterval * 3
 	assert.True(t, delta >= expectedDelta, fmt.Sprintf("Reconnecting didn't wait long enough. Should have waited %s, only waited %s", expectedDelta, delta))
-}
-
-func TestCloseFailing(t *testing.T) {
-	client := &Client{
-		ReconnectAttempts: 100,
-		Dial: func() (net.Conn, error) {
-			return nil, fmt.Errorf("I won't dial, no way!")
-		},
-	}
-	go client.Connect()
-	time.Sleep(100 * time.Millisecond)
-	client.Close()
-}
-
-func TestCloseUnconnected(t *testing.T) {
-	client := &Client{}
-	err := client.Close()
-	assert.Error(t, err, "Closing unconnected client should fail")
 }
 
 func TestPeersPlainText(t *testing.T) {
@@ -119,15 +103,10 @@ func TestPeersTLS(t *testing.T) {
 	doTestPeers(t, true)
 }
 
-type clientWithId struct {
-	id     PeerId
-	client *Client
-}
-
 func doTestPeers(t *testing.T, useTLS bool) {
 	socketsAtStart := countTCPFiles()
 	closeActions := make([]func(), 0)
-	peers := make([]*clientWithId, 0, NumPeers)
+	peers := make([]*Client, 0, NumPeers)
 	defer func() {
 		for _, action := range closeActions {
 			action()
@@ -136,13 +115,10 @@ func doTestPeers(t *testing.T, useTLS bool) {
 		assert.Equal(t, socketsAtStart, socketsAtEnd, "All file descriptors should have been closed")
 
 		// Make sure we can't do stuff with closed client
-		client := peers[0].client
+		client := peers[0]
 
 		err := client.SendKeepAlive()
 		assert.Error(t, err, "Attempting to SendKeepAlive on closed client should fail")
-
-		err = client.Close()
-		assert.Error(t, err, "Attempting to close already closed client should fail")
 
 		// Make sure we can't obtain in or out topics after closing clients
 		defer func() {
@@ -200,8 +176,8 @@ func doTestPeers(t *testing.T, useTLS bool) {
 	}
 
 	idCallbackTriggered := int32(0)
-	connect := func() *clientWithId {
-		client := &Client{
+	connect := func() *Client {
+		cfg := &ClientConfig{
 			Dial:              dial,
 			ServerCert:        cert,
 			ReconnectAttempts: 1,
@@ -209,16 +185,14 @@ func doTestPeers(t *testing.T, useTLS bool) {
 				atomic.AddInt32(&idCallbackTriggered, 1)
 			},
 		}
-		id, err := client.Connect()
+		client, err := NewClient(cfg)
 		if err != nil {
 			log.Fatalf("Unable to connect client: %s", err)
 		}
-		_, err = client.Connect()
-		assert.Error(t, err, "Extra connect call should resulst in error")
-		return &clientWithId{id, client}
+		return client
 	}
 
-	peersCh := make(chan *clientWithId, NumPeers)
+	peersCh := make(chan *Client, NumPeers)
 	// Connect clients
 	for i := 0; i < NumPeers; i++ {
 		go func() {
@@ -232,7 +206,7 @@ func doTestPeers(t *testing.T, useTLS bool) {
 		peer := <-peersCh
 		peers = append(peers, peer)
 		closeActions = append(closeActions, func() {
-			err := peer.client.Close()
+			err := peer.Close()
 			assert.NoError(t, err, "Closing client shouldn't result in error")
 		})
 	}
@@ -265,11 +239,12 @@ func doTestPeers(t *testing.T, useTLS bool) {
 		assert.Nil(t, errs, "Closing clientMgr shouldn't result in errors")
 	})
 
-	badPeer, badPeerId, err := clientMgr.ClientTo(serverAddr)
+	badPeer, err := clientMgr.ClientTo(serverAddr)
 	if err != nil {
 		log.Fatalf("Unable to connect bad peer: %s", err)
 	}
 	cbMutex.Lock()
+	badPeerId := badPeer.CurrentId()
 	assert.Equal(t, serverAddr, cbAddr, "IdCallback should have recorded the server's addr")
 	assert.Equal(t, badPeerId, cbId, "IdCallback should have recorded the correct id")
 	cbMutex.Unlock()
@@ -294,13 +269,13 @@ func doTestPeers(t *testing.T, useTLS bool) {
 				// Write to each reader
 				for j := 0; j < NumPeers; j += 2 {
 					recip := peers[j]
-					peer.client.Out(TestTopic) <- Message(recip.id, []byte(Hello[:2]), []byte(Hello[2:]))
+					peer.Out(TestTopic) <- Message(recip.CurrentId(), []byte(Hello[:2]), []byte(Hello[2:]))
 					if err != nil {
 						log.Fatalf("Unable to write hello: %s", err)
 					} else {
-						resp := <-peer.client.In(TestTopic)
-						assert.Equal(t, fmt.Sprintf(HelloYourself, peer.id), string(resp.Body), "Response should match expected.")
-						assert.Equal(t, recip.id, resp.From, "Peer on response should match expected")
+						resp := <-peer.In(TestTopic)
+						assert.Equal(t, fmt.Sprintf(HelloYourself, peer.CurrentId()), string(resp.Body), "Response should match expected.")
+						assert.Equal(t, recip.CurrentId(), resp.From, "Peer on response should match expected")
 					}
 				}
 			}()
@@ -311,13 +286,13 @@ func doTestPeers(t *testing.T, useTLS bool) {
 
 				// Read from all readers
 				for j := 1; j < NumPeers; j += 2 {
-					err := peer.client.SendKeepAlive()
+					err := peer.SendKeepAlive()
 					if err != nil {
 						log.Fatalf("Unable to send KeepAlive: %s", err)
 					}
-					msg := <-peer.client.In(TestTopic)
+					msg := <-peer.In(TestTopic)
 					assert.Equal(t, Hello, string(msg.Body), "Hello message should match expected")
-					peer.client.Out(TestTopic) <- Message(msg.From, []byte(fmt.Sprintf(HelloYourself, msg.From)))
+					peer.Out(TestTopic) <- Message(msg.From, []byte(fmt.Sprintf(HelloYourself, msg.From)))
 					if err != nil {
 						log.Fatalf("Unable to write response to HELLO message: %s", err)
 					}

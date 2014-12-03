@@ -7,9 +7,6 @@ import (
 // Out returns the (one and only) channel for writing to the topic identified by
 // the given id.
 func (c *Client) Out(id TopicId) chan<- *MessageOut {
-	if !c.hasConnected() {
-		panic(notConnectedError.Error())
-	}
 	if c.isClosed() {
 		panic("Attempted to obtain out topic on closed client")
 	}
@@ -32,9 +29,6 @@ func (c *Client) Out(id TopicId) chan<- *MessageOut {
 // In returns the (one and only) channel for receiving from the topic identified
 // by the given id.
 func (c *Client) In(id TopicId) <-chan *MessageIn {
-	if !c.hasConnected() {
-		panic(notConnectedError.Error())
-	}
 	if c.isClosed() {
 		panic("Attempted to obtain in topic on closed client")
 	}

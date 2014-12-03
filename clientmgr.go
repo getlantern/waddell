@@ -27,22 +27,21 @@ type ClientMgr struct {
 	OnId func(addr string, id PeerId)
 
 	clients      map[string]*Client
-	ids          map[string]PeerId
 	clientsMutex sync.Mutex
 }
 
 // ClientTo obtains the one (and only) client to the given addr, creating a new
 // one if necessary. This method is safe to call from multiple goroutines.
-func (m *ClientMgr) ClientTo(addr string) (*Client, PeerId, error) {
+func (m *ClientMgr) ClientTo(addr string) (*Client, error) {
 	m.clientsMutex.Lock()
 	defer m.clientsMutex.Unlock()
 	if m.clients == nil {
 		m.clients = make(map[string]*Client)
-		m.ids = make(map[string]PeerId)
 	}
 	client := m.clients[addr]
+	var err error
 	if client == nil {
-		client = &Client{
+		cfg := &ClientConfig{
 			Dial: func() (net.Conn, error) {
 				return m.Dial(addr)
 			},
@@ -50,19 +49,17 @@ func (m *ClientMgr) ClientTo(addr string) (*Client, PeerId, error) {
 			ReconnectAttempts: m.ReconnectAttempts,
 		}
 		if m.OnId != nil {
-			client.OnId = func(id PeerId) {
+			cfg.OnId = func(id PeerId) {
 				m.OnId(addr, id)
 			}
 		}
-		id, err := client.Connect()
+		client, err = NewClient(cfg)
 		if err != nil {
-			return nil, id, err
+			return nil, err
 		}
 		m.clients[addr] = client
-		m.ids[addr] = id
 	}
-	id := m.ids[addr]
-	return client, id, nil
+	return client, nil
 }
 
 // Close closes this ClientMgr and all managed clients.
