@@ -31,11 +31,9 @@ func (c *Client) stayConnected() {
 				log.Trace("connInfoChs closed, done processing")
 				return
 			}
-			if info != nil {
-				infoCh <- info
-				continue
+			if info == nil {
+				info = c.connect()
 			}
-			info = c.connect()
 			infoCh <- info
 		}
 	}

@@ -58,14 +58,14 @@ type DialFunc func() (net.Conn, error)
 // the waddell server, returning the initial PeerId.
 //
 // Note - if the client automatically reconnects, its peer ID will change. You
-// can obtain the new id from IdChannel.
+// can obtain the new id through providing an OnId callback to the client.
 //
 // Note - whether or not auto reconnecting is enabled, this method doesn't
 // return until a connection has been established or we've failed trying.
 func (c *Client) Connect() (PeerId, error) {
 	alreadyConnected := !atomic.CompareAndSwapInt32(&c.connected, 0, 1)
 	if alreadyConnected {
-		return PeerId{}, fmt.Errorf("Client already connected")
+		return PeerId{}, fmt.Errorf("Client already connecting or connected")
 	}
 
 	var err error
