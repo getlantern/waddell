@@ -49,7 +49,7 @@ func (t *topic) processOut() {
 		}
 		info := t.client.getConnInfo()
 		if info.err != nil {
-			log.Errorf("Unable to get connection to waddell, stop sending to %s: %s", t.id, info.err)
+			log.Errorf("Unable to get connection to waddell, stop sending to %d: %s", t.id, info.err)
 			t.client.Close()
 			return
 		}

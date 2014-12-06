@@ -166,7 +166,7 @@ func (p *peer) readNext() (ok bool) {
 	to, err := readPeerId(msg)
 	if err != nil {
 		// Problem determining recipient
-		log.Errorf("Unable to determine recipient: ", err.Error())
+		log.Errorf("Unable to determine recipient: %s", err.Error())
 		return true
 	}
 	cto := p.server.getPeer(to)
