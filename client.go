@@ -62,6 +62,10 @@ type DialFunc func() (net.Conn, error)
 // connection to the waddell server, returning the client and the initial
 // PeerId.
 //
+// IMPORTANT - clients receive messages on topics. Users of Client are
+// responsible for draining all topics on which the Client may receive a
+// message, otherwise other topics will block.
+//
 // Note - if the client automatically reconnects, its peer ID will change. You
 // can obtain the new id through providing an OnId callback to the client.
 //
