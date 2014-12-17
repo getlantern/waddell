@@ -111,6 +111,8 @@ func doTestPeers(t *testing.T, useTLS bool) {
 		for _, action := range closeActions {
 			action()
 		}
+		// Wait a short time to let sockets finish closing
+		time.Sleep(250 * time.Millisecond)
 		socketsAtEnd := countTCPFiles()
 		assert.Equal(t, socketsAtStart, socketsAtEnd, "All file descriptors should have been closed")
 
