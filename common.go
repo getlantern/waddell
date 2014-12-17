@@ -48,27 +48,57 @@
 //   80-143  Address Part 2  - 64-bit integer in Little Endian byte order for
 //                             second half of peer id
 //
-//   144+    Message Body    - whatever data the client sent
+//   144-159 Topic ID        - 16-bit integer in Little Endian byte order
+//                             identifying the topic of the communication
+//
+//   160+    Message Body    - whatever data the client sent
 //
 package waddell
 
 import (
+	"encoding/binary"
+	"fmt"
+
 	"github.com/getlantern/buuid"
 	"github.com/getlantern/framed"
 	"github.com/getlantern/golog"
 )
 
 const (
-	PeerIdLength    = buuid.EncodedLength
-	WaddellOverhead = 18 // bytes of overhead imposed by waddell
-	MaxDataLength   = framed.MaxFrameSize - WaddellOverhead
+	PeerIdLength        = buuid.EncodedLength
+	TopicIdLength       = 2
+	WaddellHeaderLength = PeerIdLength + TopicIdLength
+	WaddellOverhead     = framed.FrameHeaderLength + WaddellHeaderLength // bytes of overhead imposed by waddell
+	MaxDataLength       = framed.MaxFrameLength - WaddellOverhead
+
+	UnknownTopic = TopicId(0)
 )
 
 var (
-	log = golog.LoggerFor("waddell.client")
+	log = golog.LoggerFor("waddell")
+
+	endianness = binary.LittleEndian
 
 	keepAlive = []byte{'k'}
 )
+
+// MessageOut is a message to a waddell server
+type MessageOut struct {
+	To   PeerId
+	Body [][]byte
+}
+
+// MessageIn is a message to a waddell server
+type MessageIn struct {
+	From  PeerId
+	topic TopicId
+	Body  []byte
+}
+
+// Message builds a new message to the given peer with the given body.
+func Message(to PeerId, body ...[]byte) *MessageOut {
+	return &MessageOut{to, body}
+}
 
 // PeerId is an identifier for a waddell peer
 type PeerId buuid.ID
@@ -99,4 +129,21 @@ func (id PeerId) write(b []byte) error {
 
 func (id PeerId) toBytes() []byte {
 	return buuid.ID(id).ToBytes()
+}
+
+// TopicId identifies a topic for messages.
+type TopicId uint16
+
+func readTopicId(b []byte) (TopicId, error) {
+	if len(b) < TopicIdLength {
+		return 0, fmt.Errorf("Insufficient data for decoding 16-bit TopicId")
+	}
+	id := endianness.Uint16(b)
+	return TopicId(id), nil
+}
+
+func (id TopicId) toBytes() []byte {
+	b := make([]byte, TopicIdLength)
+	endianness.PutUint16(b, uint16(id))
+	return b
 }

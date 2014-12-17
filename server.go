@@ -13,6 +13,8 @@ import (
 
 const (
 	DefaultNumBuffers = 10000
+
+	numAddPeerAttempts = 100
 )
 
 // Server is a waddell server
@@ -30,14 +32,6 @@ type Server struct {
 	buffers    *bpool.BytePool  // pool of buffers for reading/writing
 }
 
-type peer struct {
-	server *Server
-	id     PeerId
-	conn   net.Conn
-	reader *framed.Reader
-	writer *framed.Writer
-}
-
 // Listen creates a listener at the given address. pkfile and certfile are
 // optional. If both are specified, connections will be secured with TLS.
 func Listen(addr string, pkfile string, certfile string) (net.Listener, error) {
@@ -48,6 +42,41 @@ func Listen(addr string, pkfile string, certfile string) (net.Listener, error) {
 		return listenTLS(addr, pkfile, certfile)
 	} else {
 		return net.Listen("tcp", addr)
+	}
+}
+
+// Serve starts the waddell server using the given listener
+func (server *Server) Serve(listener net.Listener) error {
+	// Set default values
+	if server.NumBuffers == 0 {
+		server.NumBuffers = DefaultNumBuffers
+	}
+	if server.BufferBytes == 0 {
+		server.BufferBytes = framed.MaxFrameLength
+	}
+
+	server.buffers = bpool.NewBytePool(server.NumBuffers, server.BufferBytes)
+	server.peers = make(map[PeerId]*peer)
+
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			return fmt.Errorf("Error accepting connection: %s", err)
+		}
+		p, err := server.addPeer(&peer{
+			server: server,
+			conn:   conn,
+			reader: framed.NewReader(conn),
+			writer: framed.NewWriter(conn),
+		})
+		if err != nil {
+			// Note - we only enter here if we failed to find a unique UUID
+			// within numAddPeerAttempts tries, which is pretty much impossible.
+			log.Error(err)
+			conn.Close()
+			continue
+		}
+		go p.run()
 	}
 }
 
@@ -63,40 +92,32 @@ func listenTLS(addr string, pkfile string, certfile string) (net.Listener, error
 	return tls.Listen("tcp", addr, cfg)
 }
 
-// Serve starts the waddell server using the given listener
-func (server *Server) Serve(listener net.Listener) error {
-	// Set default values
-	if server.NumBuffers == 0 {
-		server.NumBuffers = DefaultNumBuffers
-	}
-	if server.BufferBytes == 0 {
-		server.BufferBytes = framed.MaxFrameSize
-	}
-
-	server.buffers = bpool.NewBytePool(server.NumBuffers, server.BufferBytes)
-	server.peers = make(map[PeerId]*peer)
-
-	for {
-		conn, err := listener.Accept()
-		if err != nil {
-			return fmt.Errorf("Error accepting connection: %s", err)
-		}
-		c := server.addPeer(&peer{
-			server: server,
-			id:     randomPeerId(),
-			conn:   conn,
-			reader: framed.NewReader(conn),
-			writer: framed.NewWriter(conn),
-		})
-		go c.run()
-	}
+type peer struct {
+	server *Server
+	id     PeerId
+	conn   net.Conn
+	reader *framed.Reader
+	writer *framed.Writer
 }
 
-func (server *Server) addPeer(c *peer) *peer {
+func (server *Server) addPeer(p *peer) (*peer, error) {
 	server.peersMutex.Lock()
 	defer server.peersMutex.Unlock()
-	server.peers[c.id] = c
-	return c
+	peerAdded := false
+	for i := 0; i < numAddPeerAttempts; i++ {
+		p.id = randomPeerId()
+		_, exists := server.peers[p.id]
+		if exists {
+			// We had an ID collision, try assigning a different ID.
+			continue
+		}
+		server.peers[p.id] = p
+		peerAdded = true
+	}
+	if !peerAdded {
+		return nil, fmt.Errorf("Unable to find unique UUID within %d tries", numAddPeerAttempts)
+	}
+	return p, nil
 }
 
 func (server *Server) getPeer(id PeerId) *peer {
@@ -111,14 +132,12 @@ func (server *Server) removePeer(id PeerId) {
 	delete(server.peers, id)
 }
 
-func (peer *peer) run() {
-	defer peer.conn.Close()
-	defer peer.server.removePeer(peer.id)
+func (p *peer) run() {
+	defer p.conn.Close()
+	defer p.server.removePeer(p.id)
 
-	// Tell the peer its id
-	msg := peer.server.buffers.Get()[:PeerIdLength]
-	peer.id.write(msg)
-	_, err := peer.writer.Write(msg)
+	// Tell the peer its id (and set topic to UnknownTopic)
+	_, err := p.writer.WritePieces(p.id.toBytes(), UnknownTopic.toBytes())
 	if err != nil {
 		log.Debugf("Unable to send peerid on connect: %s", err)
 		return
@@ -126,16 +145,16 @@ func (peer *peer) run() {
 
 	// Read messages until there are no more to read
 	for {
-		if !peer.readNext() {
+		if !p.readNext() {
 			return
 		}
 	}
 }
 
-func (peer *peer) readNext() (ok bool) {
-	b := peer.server.buffers.Get()
-	defer peer.server.buffers.Put(b)
-	n, err := peer.reader.Read(b)
+func (p *peer) readNext() (ok bool) {
+	b := p.server.buffers.Get()
+	defer p.server.buffers.Put(b)
+	n, err := p.reader.Read(b)
 	if err != nil {
 		return false
 	}
@@ -147,23 +166,28 @@ func (peer *peer) readNext() (ok bool) {
 	to, err := readPeerId(msg)
 	if err != nil {
 		// Problem determining recipient
-		log.Errorf("Unable to determine recipient: ", err.Error())
+		log.Errorf("Unable to determine recipient: %s", err.Error())
 		return true
 	}
-	cto := peer.server.getPeer(to)
+	cto := p.server.getPeer(to)
 	if cto == nil {
 		// Recipient not found
 		return true
 	}
 	// Set sender's id as the id in the message
-	err = peer.id.write(msg)
+	err = p.id.write(msg)
 	if err != nil {
 		return true
 	}
 	_, err = cto.writer.Write(msg)
 	if err != nil {
-		cto.conn.Close()
+		log.Tracef("%s unable to write to recipient %s: %s", p.id, to, err)
+		cto.disconnect()
 		return true
 	}
 	return true
+}
+
+func (p *peer) disconnect() {
+	p.conn.Close()
 }
