@@ -112,13 +112,13 @@ func (info *connInfo) receive() (*MessageIn, error) {
 	if err != nil {
 		return nil, err
 	}
-        if len(frame) < WaddellHeaderLength {
-                return &MessageIn{
-                      From:  peer,
-                      topic: UnknownTopic,
-                      Body:  nil,
-                }, nil 
-        }
+	if len(frame) < WaddellHeaderLength {
+		return &MessageIn{
+			From:  peer,
+			topic: UnknownTopic,
+			Body:  nil,
+		}, nil
+	}
 	topic, err := readTopicId(frame[PeerIdLength:])
 	return &MessageIn{
 		From:  peer,
