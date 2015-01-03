@@ -105,13 +105,20 @@ func (info *connInfo) receive() (*MessageIn, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(frame) < WaddellHeaderLength {
-		return nil, fmt.Errorf("Frame not long enough to contain waddell headers. Needed %d bytes, found only %d.", WaddellHeaderLength, len(frame))
+	if len(frame) < PeerIdLength {
+		return nil, fmt.Errorf("Frame not long enough to contain waddell headers. Needed %d bytes, found only %d.", PeerIdLength, len(frame))
 	}
 	peer, err := readPeerId(frame)
 	if err != nil {
 		return nil, err
 	}
+        if len(frame) < WaddellHeaderLength {
+                return &MessageIn{
+                      From:  peer,
+                      topic: UnknownTopic,
+                      Body:  nil,
+                }, nil 
+        }
 	topic, err := readTopicId(frame[PeerIdLength:])
 	return &MessageIn{
 		From:  peer,
